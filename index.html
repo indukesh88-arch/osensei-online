@@ -92,7 +92,8 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 <h2>Players in the room</h2>
 <div id="players"></div>
 <div class="small" id="seatInfo"></div>
-<p class="small">The host starts the game once everyone is ready. Gameplay will be added in the next stage.</p>
+<p class="small" id="lobbyHelp">The host can start the game when all seats are occupied.</p>
+<button id="startGameBtn" onclick="startGame()" class="hidden">Start Game</button>
 <button class="secondary" onclick="leaveRoom()">Leave Room</button>
 <div id="lobbyStatus" class="status"></div>
 </section>
@@ -208,6 +209,35 @@ async function refreshRoom(){
     document.getElementById("players").appendChild(el);
   });
   document.getElementById("seatInfo").textContent=players.length+" / "+room.max_players+" seats occupied";
+
+  const isHost=Boolean(currentUser && currentUser.id===room.host_id);
+  const startBtn=document.getElementById("startGameBtn");
+  startBtn.classList.toggle("hidden",!isHost || room.status!=="waiting");
+  startBtn.disabled=players.length!==room.max_players;
+  if(room.status==="playing"){
+    message("lobbyStatus","Game initialized successfully. The gameplay screen is the next development step.");
+    document.getElementById("lobbyHelp").textContent="The game has started. Gameplay controls are being built next.";
+  }else if(isHost && players.length!==room.max_players){
+    document.getElementById("lobbyHelp").textContent="You are the host. Fill all "+room.max_players+" seats before starting.";
+  }else{
+    document.getElementById("lobbyHelp").textContent="The host can start the game when all seats are occupied.";
+  }
+}
+
+async function startGame(){
+  if(!currentRoom)return;
+  const btn=document.getElementById("startGameBtn");
+  btn.disabled=true;
+  message("lobbyStatus","Starting game...");
+  try{
+    await authenticate();
+    const {error}=await db.rpc("start_game",{p_room_id:currentRoom});
+    if(error) throw error;
+    await refreshRoom();
+  }catch(e){
+    message("lobbyStatus","Could not start game: "+e.message);
+    btn.disabled=false;
+  }
 }
 
 async function leaveRoom(){
