@@ -131,7 +131,8 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div id="gameStatus" class="status"></div>
   <button class="secondary" onclick="returnToLobby()">Back to Room</button>
 </section>
-\n<footer>ŌSENSEI ONLINE · THE WAY OF THE SEASONS</footer>
+
+<footer>ŌSENSEI ONLINE · THE WAY OF THE SEASONS</footer>
 </main>
 
 <script>
@@ -333,7 +334,8 @@ async function showGameScreen(room,players){
   document.getElementById("gameStatus").textContent="Your hand: "+cards.length+" cards. Card playing and turn actions will be added in the next stage.";
 }
 function returnToLobby(){show("lobby");}
-\nasync function startGame(){
+
+async function startGame(){
   if(!currentRoom)return;
   const btn=document.getElementById("startGameBtn");
   btn.disabled=true;
