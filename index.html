@@ -129,6 +129,7 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div class="game-note">Your cards are private. Scroll sideways to view your full hand.</div>
   <div id="myHand" class="hand"></div>
   <div id="gameStatus" class="status"></div>
+  <button id="drawCardBtn" onclick="drawGameCard()">Draw Card</button>
   <button class="secondary" onclick="returnToLobby()">Back to Room</button>
 </section>
 
@@ -323,6 +324,9 @@ async function showGameScreen(room,players){
     return;
   }
   const cards=Array.isArray(handRow.cards)?handRow.cards:[];
+  const drawButton=document.getElementById("drawCardBtn");
+  drawButton.disabled=active?.id!==me.id || cards.length>=12;
+  drawButton.textContent=active?.id===me.id?"Draw Card":"Waiting for your turn";
   cards.forEach(card=>{
     const el=document.createElement("div");el.className="hand-card";
     const title=document.createElement("div");title.className="card-title";title.textContent=cardLabel(card);
@@ -332,6 +336,20 @@ async function showGameScreen(room,players){
     el.append(title,number,meta);hand.appendChild(el);
   });
   document.getElementById("gameStatus").textContent="Your hand: "+cards.length+" cards. Card playing and turn actions will be added in the next stage.";
+}
+async function drawGameCard(){
+  const btn=document.getElementById("drawCardBtn");
+  if(!currentRoom || btn.disabled)return;
+  btn.disabled=true;
+  document.getElementById("gameStatus").textContent="Drawing a card...";
+  const {data,error}=await db.rpc("draw_game_card",{p_room_id:currentRoom});
+  if(error){
+    document.getElementById("gameStatus").textContent=error.message;
+    btn.disabled=false;
+    return;
+  }
+  await refreshRoom();
+  document.getElementById("gameStatus").textContent="Card drawn. "+data.cards_in_hand+" cards in your hand; "+data.cards_remaining+" cards remain in the draw deck.";
 }
 function returnToLobby(){show("lobby");}
 
