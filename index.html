@@ -144,7 +144,7 @@ let currentRoom=null;
 let roomChannel=null;
 
 function show(id){
-  ["home","create","join","lobby"].forEach(x=>
+  ["home","create","join","lobby","gameScreen"].forEach(x=>
     document.getElementById(x).classList.toggle("hidden",x!==id)
   );
 }
