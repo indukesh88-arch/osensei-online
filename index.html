@@ -30,6 +30,24 @@ button:disabled{opacity:.5}
 .small{font:12px Arial;color:#a99a8b}
 footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 @media(max-width:420px){h1{font-size:38px}.actions{grid-template-columns:1fr}}
+
+/* Gameplay table */
+.game-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font:12px Arial;color:#d8c18b}
+.game-board{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}
+.pile{min-height:150px;background:#171213;border:1px solid #76563d;border-radius:10px;padding:12px;text-align:center}
+.pile-label{font:11px Arial;letter-spacing:2px;color:#c9a96a;margin-bottom:10px}
+.pile-card{margin:auto;width:88px;height:112px;border:2px solid #c6a66a;border-radius:7px;background:linear-gradient(145deg,#eee0bd,#cbb58c);color:#39291d;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:7px;box-shadow:0 5px 12px #0008;font: bold 13px Georgia;text-align:center;overflow:hidden}
+.pile-card.back{background:repeating-linear-gradient(45deg,#5a2028,#5a2028 7px,#32171d 7px,#32171d 14px);color:#e8d5a5}
+.opponents{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;margin:12px 0}
+.opponent{background:#292020;border:1px solid #5b4436;border-radius:8px;padding:10px;font:12px Arial}
+.opponent.active{border-color:#e2c071;box-shadow:0 0 0 1px #e2c07155}
+.hand{display:flex;gap:9px;overflow-x:auto;padding:10px 2px 16px;scroll-snap-type:x mandatory}
+.hand-card{flex:0 0 112px;min-height:158px;border:2px solid #c4a66b;border-radius:8px;background:linear-gradient(145deg,#f0e4c8,#cbb68d);color:#39291d;padding:9px 7px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;box-shadow:0 5px 12px #0007;scroll-snap-align:start}
+.hand-card .card-title{font:bold 13px Georgia}
+.hand-card .card-number{font:bold 28px Georgia}
+.hand-card .card-meta{font:10px Arial;letter-spacing:1px;text-transform:uppercase}
+.game-note{font:12px/1.5 Arial;color:#bcae9d}
+@media(max-width:420px){.pile{min-height:135px}.hand-card{flex-basis:100px;min-height:145px}}
 </style>
 </head>
 <body>
@@ -98,7 +116,22 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 <div id="lobbyStatus" class="status"></div>
 </section>
 
-<footer>ŌSENSEI ONLINE · THE WAY OF THE SEASONS</footer>
+
+<section id="gameScreen" class="panel hidden">
+  <div class="game-top"><span id="gameRound">ROUND 1</span><span id="gameTurn">WAITING FOR TURN</span></div>
+  <h2 style="text-align:center;margin-top:18px">The Seasons Table</h2>
+  <div id="opponents" class="opponents"></div>
+  <div class="game-board">
+    <div class="pile"><div class="pile-label">DRAW DECK</div><div class="pile-card back">ŌSENSEI</div><div class="small" id="drawCount">Loading...</div></div>
+    <div class="pile"><div class="pile-label">OPEN PILE</div><div id="openTop" class="pile-card">EMPTY</div><div class="small" id="openCount">0 cards</div></div>
+  </div>
+  <h2>Your Hand</h2>
+  <div class="game-note">Your cards are private. Scroll sideways to view your full hand.</div>
+  <div id="myHand" class="hand"></div>
+  <div id="gameStatus" class="status"></div>
+  <button class="secondary" onclick="returnToLobby()">Back to Room</button>
+</section>
+\n<footer>ŌSENSEI ONLINE · THE WAY OF THE SEASONS</footer>
 </main>
 
 <script>
@@ -193,7 +226,7 @@ async function refreshRoom(){
   if(!currentRoom)return;
   const {data:room,error}=await db.from("game_rooms").select("*").eq("id",currentRoom).single();
   if(error){message("lobbyStatus",error.message);return;}
-  const {data:players,error:playerError}=await db.from("room_players").select("player_name,seat_number,is_bot,is_connected").eq("room_id",currentRoom).order("seat_number");
+  const {data:players,error:playerError}=await db.from("room_players").select("id,user_id,player_name,seat_number,turn_order,is_bot,is_connected").eq("room_id",currentRoom).order("seat_number");
   if(playerError){message("lobbyStatus",playerError.message);return;}
   document.getElementById("displayCode").textContent=room.room_code;
   document.getElementById("roomInfo").textContent="Room status: "+room.status+" · Strategic bots: "+room.bot_count;
@@ -215,8 +248,9 @@ async function refreshRoom(){
   startBtn.classList.toggle("hidden",!isHost || room.status!=="waiting");
   startBtn.disabled=players.length!==room.max_players;
   if(room.status==="playing"){
-    message("lobbyStatus","Game initialized successfully. The gameplay screen is the next development step.");
-    document.getElementById("lobbyHelp").textContent="The game has started. Gameplay controls are being built next.";
+    showGameScreen(room,players);
+    message("lobbyStatus","Game initialized successfully.");
+    document.getElementById("lobbyHelp").textContent="The game is in progress.";
   }else if(isHost && players.length!==room.max_players){
     document.getElementById("lobbyHelp").textContent="You are the host. Fill all "+room.max_players+" seats before starting.";
   }else{
@@ -224,7 +258,82 @@ async function refreshRoom(){
   }
 }
 
-async function startGame(){
+
+function cardLabel(card){
+  if(card===null||card===undefined)return "Unknown card";
+  if(typeof card==="string")return card;
+  return card.name||card.title||card.card_name||card.type||card.card_type||"Ōsensei card";
+}
+function cardDetails(card){
+  if(card===null||card===undefined)return "";
+  if(typeof card==="string")return "";
+  const bits=[];
+  const season=card.season||card.suit;
+  const number=card.number??card.value;
+  if(season)bits.push(String(season));
+  if(number!==undefined&&number!==null)bits.push("#"+number);
+  if(card.points!==undefined&&card.points!==null)bits.push(card.points+" pts");
+  return bits.join(" · ");
+}
+async function showGameScreen(room,players){
+  show("gameScreen");
+  document.getElementById("gameStatus").textContent="Loading your cards...";
+  document.getElementById("opponents").innerHTML="";
+  const {data:state,error:stateError}=await db.from("game_states")
+    .select("status,current_round,current_turn_seat,draw_deck,open_pile,turn_number")
+    .eq("room_id",currentRoom).single();
+  if(stateError){
+    document.getElementById("gameStatus").textContent="Could not load game state: "+stateError.message;
+    return;
+  }
+  const me=players.find(p=>p.user_id===currentUser?.id);
+  if(!me){
+    document.getElementById("gameStatus").textContent="Your player seat could not be found in this room.";
+    return;
+  }
+  const {data:handRow,error:handError}=await db.from("player_hands")
+    .select("cards").eq("room_id",currentRoom).eq("room_player_id",me.id).single();
+  document.getElementById("gameRound").textContent="ROUND "+state.current_round;
+  const active=players.find(p=>p.seat_number===state.current_turn_seat);
+  document.getElementById("gameTurn").textContent=active
+    ? (active.id===me.id?"YOUR TURN":" "+active.player_name.toUpperCase()+"'S TURN")
+    : "TURN NOT SET";
+  const opponents=document.getElementById("opponents");
+  players.forEach(p=>{
+    const el=document.createElement("div");
+    el.className="opponent"+(p.seat_number===state.current_turn_seat?" active":"");
+    const title=document.createElement("strong");
+    title.textContent=p.id===me.id?"YOU · "+p.player_name:p.player_name+(p.is_bot?" · BOT":"");
+    const sub=document.createElement("div");
+    sub.className="small";
+    sub.textContent=p.seat_number===state.current_turn_seat?"Current turn":"Seat "+p.seat_number;
+    el.append(title,sub);opponents.appendChild(el);
+  });
+  const deck=Array.isArray(state.draw_deck)?state.draw_deck:[];
+  const pile=Array.isArray(state.open_pile)?state.open_pile:[];
+  document.getElementById("drawCount").textContent=deck.length+" cards remaining";
+  document.getElementById("openCount").textContent=pile.length+" cards";
+  const top=document.getElementById("openTop");
+  top.textContent=pile.length?cardLabel(pile[pile.length-1]):"EMPTY";
+  const hand=document.getElementById("myHand");
+  hand.innerHTML="";
+  if(handError){
+    document.getElementById("gameStatus").textContent="Game table loaded, but your hand could not be read: "+handError.message;
+    return;
+  }
+  const cards=Array.isArray(handRow.cards)?handRow.cards:[];
+  cards.forEach(card=>{
+    const el=document.createElement("div");el.className="hand-card";
+    const title=document.createElement("div");title.className="card-title";title.textContent=cardLabel(card);
+    const number=document.createElement("div");number.className="card-number";
+    number.textContent=(typeof card==="object"&&card!==null&&(card.number??card.value)!==undefined)?String(card.number??card.value):"✿";
+    const meta=document.createElement("div");meta.className="card-meta";meta.textContent=cardDetails(card)||"SEASON CARD";
+    el.append(title,number,meta);hand.appendChild(el);
+  });
+  document.getElementById("gameStatus").textContent="Your hand: "+cards.length+" cards. Card playing and turn actions will be added in the next stage.";
+}
+function returnToLobby(){show("lobby");}
+\nasync function startGame(){
   if(!currentRoom)return;
   const btn=document.getElementById("startGameBtn");
   btn.disabled=true;
