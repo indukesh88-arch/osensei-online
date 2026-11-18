@@ -43,6 +43,8 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 .opponent.active{border-color:#e2c071;box-shadow:0 0 0 1px #e2c07155}
 .hand{display:flex;gap:9px;overflow-x:auto;padding:10px 2px 16px;scroll-snap-type:x mandatory}
 .hand-card{flex:0 0 112px;min-height:158px;border:2px solid #c4a66b;border-radius:8px;background:linear-gradient(145deg,#f0e4c8,#cbb68d);color:#39291d;padding:9px 7px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;box-shadow:0 5px 12px #0007;scroll-snap-align:start}
+.hand-card.selected{border-color:#ffe08a;box-shadow:0 0 0 3px #e2c07188,0 7px 16px #0009;transform:translateY(-5px)}
+.hand-card:disabled{opacity:.6}
 .hand-card .card-title{font:bold 13px Georgia}
 .hand-card .card-number{font:bold 28px Georgia}
 .hand-card .card-meta{font:10px Arial;letter-spacing:1px;text-transform:uppercase}
@@ -130,6 +132,7 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div id="myHand" class="hand"></div>
   <div id="gameStatus" class="status"></div>
   <button id="drawCardBtn" onclick="drawGameCard()">Draw Card</button>
+  <button id="playCardBtn" onclick="playSelectedCard()" disabled>Play Selected Card</button>
   <button class="secondary" onclick="returnToLobby()">Back to Room</button>
 </section>
 
@@ -145,6 +148,7 @@ let currentUser=null;
 let currentRoom=null;
 let roomChannel=null;
 let botTurnInProgress=false;
+let selectedCardId=null;
 
 function show(id){
   ["home","create","join","lobby","gameScreen"].forEach(x=>
@@ -325,11 +329,18 @@ async function showGameScreen(room,players){
     return;
   }
   const cards=Array.isArray(handRow.cards)?handRow.cards:[];
+  if(!cards.some(card=>card.id===selectedCardId))selectedCardId=null;
+  const playButton=document.getElementById("playCardBtn");
+  playButton.disabled=active?.id!==me.id || !cards.some(card=>card.id===selectedCardId && card.category==="season");
   const drawButton=document.getElementById("drawCardBtn");
   drawButton.disabled=active?.id!==me.id || cards.length>=12;
   drawButton.textContent=active?.id===me.id?"Draw Card":"Waiting for your turn";
   cards.forEach(card=>{
-    const el=document.createElement("div");el.className="hand-card";
+    const el=document.createElement("button");
+    el.type="button";
+    el.className="hand-card"+(card.id===selectedCardId?" selected":"");
+    el.disabled=active?.id!==me.id;
+    el.onclick=()=>selectHandCard(card.id);
     const title=document.createElement("div");title.className="card-title";title.textContent=cardLabel(card);
     const number=document.createElement("div");number.className="card-number";
     number.textContent=(typeof card==="object"&&card!==null&&(card.number??card.value)!==undefined)?String(card.number??card.value):"✿";
@@ -350,6 +361,29 @@ async function showGameScreen(room,players){
       botTurnInProgress=false;
     }
   }
+}
+function selectHandCard(cardId){
+  selectedCardId=cardId;
+  refreshRoom();
+}
+async function playSelectedCard(){
+  const btn=document.getElementById("playCardBtn");
+  if(!currentRoom || !selectedCardId || btn.disabled)return;
+  btn.disabled=true;
+  document.getElementById("gameStatus").textContent="Playing card...";
+  const {data,error}=await db.rpc("play_season_card",{
+    p_room_id:currentRoom,
+    p_card_id:selectedCardId
+  });
+  if(error){
+    document.getElementById("gameStatus").textContent=error.message;
+    btn.disabled=false;
+    return;
+  }
+  selectedCardId=null;
+  await refreshRoom();
+  document.getElementById("gameStatus").textContent=
+    data.played_card+" played. "+data.cards_collected+" cards collected.";
 }
 async function drawGameCard(){
   const btn=document.getElementById("drawCardBtn");
