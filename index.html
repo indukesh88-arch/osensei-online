@@ -144,6 +144,7 @@ const db = window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let currentUser=null;
 let currentRoom=null;
 let roomChannel=null;
+let botTurnInProgress=false;
 
 function show(id){
   ["home","create","join","lobby","gameScreen"].forEach(x=>
@@ -335,7 +336,20 @@ async function showGameScreen(room,players){
     const meta=document.createElement("div");meta.className="card-meta";meta.textContent=cardDetails(card)||"SEASON CARD";
     el.append(title,number,meta);hand.appendChild(el);
   });
-  document.getElementById("gameStatus").textContent="Your hand: "+cards.length+" cards. Card playing and turn actions will be added in the next stage.";
+  document.getElementById("gameStatus").textContent="Your hand: "+cards.length+" cards.";
+  if(active?.is_bot && room.host_id===currentUser?.id && !botTurnInProgress){
+    botTurnInProgress=true;
+    document.getElementById("gameStatus").textContent=active.player_name+" is thinking...";
+    try{
+      const {data,error}=await db.rpc("run_bot_turn",{p_room_id:currentRoom});
+      if(error) throw error;
+      await refreshRoom();
+    }catch(e){
+      document.getElementById("gameStatus").textContent="Bot turn could not finish: "+e.message;
+    }finally{
+      botTurnInProgress=false;
+    }
+  }
 }
 async function drawGameCard(){
   const btn=document.getElementById("drawCardBtn");
