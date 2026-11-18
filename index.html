@@ -149,6 +149,7 @@ let currentRoom=null;
 let roomChannel=null;
 let botTurnInProgress=false;
 let selectedCardId=null;
+let cardsForCurrentHand=[];
 
 function show(id){
   ["home","create","join","lobby","gameScreen"].forEach(x=>
@@ -329,9 +330,10 @@ async function showGameScreen(room,players){
     return;
   }
   const cards=Array.isArray(handRow.cards)?handRow.cards:[];
+  cardsForCurrentHand=cards;
   if(!cards.some(card=>card.id===selectedCardId))selectedCardId=null;
   const playButton=document.getElementById("playCardBtn");
-  playButton.disabled=active?.id!==me.id || !cards.some(card=>card.id===selectedCardId && card.category==="season");
+  playButton.disabled=active?.id!==me.id || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10"].includes(card.id)));
   const drawButton=document.getElementById("drawCardBtn");
   drawButton.disabled=active?.id!==me.id || cards.length>=12;
   drawButton.textContent=active?.id===me.id?"Draw Card":"Waiting for your turn";
@@ -371,7 +373,15 @@ async function playSelectedCard(){
   if(!currentRoom || !selectedCardId || btn.disabled)return;
   btn.disabled=true;
   document.getElementById("gameStatus").textContent="Playing card...";
-  const {data,error}=await db.rpc("play_season_card",{
+  const selected=cardsForCurrentHand.find(card=>card.id===selectedCardId);
+  const rpcName=selected?.category==="season"?"play_season_card":
+    (["rain_9","rain_10"].includes(selected?.id)?"play_rain_card":null);
+  if(!rpcName){
+    document.getElementById("gameStatus").textContent="This card type is not playable yet.";
+    btn.disabled=false;
+    return;
+  }
+  const {data,error}=await db.rpc(rpcName,{
     p_room_id:currentRoom,
     p_card_id:selectedCardId
   });
