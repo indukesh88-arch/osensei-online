@@ -279,7 +279,6 @@ function cardDetails(card){
 async function showGameScreen(room,players){
   show("gameScreen");
   document.getElementById("gameStatus").textContent="Loading your cards...";
-  document.getElementById("opponents").innerHTML="";
   const {data:state,error:stateError}=await db.from("game_states")
     .select("status,current_round,current_turn_seat,draw_deck,open_pile,turn_number")
     .eq("room_id",currentRoom).single();
@@ -300,6 +299,7 @@ async function showGameScreen(room,players){
     ? (active.id===me.id?"YOUR TURN":" "+active.player_name.toUpperCase()+"'S TURN")
     : "TURN NOT SET";
   const opponents=document.getElementById("opponents");
+  opponents.innerHTML="";
   players.forEach(p=>{
     const el=document.createElement("div");
     el.className="opponent"+(p.seat_number===state.current_turn_seat?" active":"");
