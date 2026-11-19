@@ -147,6 +147,8 @@ const db = window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let currentUser=null;
 let currentRoom=null;
 let roomChannel=null;
+let roomPollTimer=null;
+let roomPollBusy=false;
 let botTurnInProgress=false;
 let selectedCardId=null;
 let cardsForCurrentHand=[];
@@ -228,6 +230,15 @@ async function openRoom(id,code,max){
     .on("postgres_changes",{event:"*",schema:"public",table:"room_players",filter:"room_id=eq."+id},refreshRoom)
     .on("postgres_changes",{event:"*",schema:"public",table:"game_rooms",filter:"id=eq."+id},refreshRoom)
     .subscribe();
+  // Keep every player in sync even when game-state tables are not enabled for Realtime.
+  if(roomPollTimer) clearInterval(roomPollTimer);
+  roomPollTimer=setInterval(async()=>{
+    if(!currentRoom || document.getElementById("gameScreen").classList.contains("hidden") || roomPollBusy)return;
+    roomPollBusy=true;
+    try{await refreshRoom();}
+    catch(e){message("gameStatus","Connection refresh failed: "+e.message);}
+    finally{roomPollBusy=false;}
+  },1500);
 }
 
 async function refreshRoom(){
@@ -256,7 +267,7 @@ async function refreshRoom(){
   startBtn.classList.toggle("hidden",!isHost || room.status!=="waiting");
   startBtn.disabled=players.length!==room.max_players;
   if(room.status==="playing"){
-    showGameScreen(room,players);
+    await showGameScreen(room,players);
     message("lobbyStatus","Game initialized successfully.");
     document.getElementById("lobbyHelp").textContent="The game is in progress.";
   }else if(isHost && players.length!==room.max_players){
@@ -429,6 +440,7 @@ async function startGame(){
 }
 
 async function leaveRoom(){
+  if(roomPollTimer){clearInterval(roomPollTimer);roomPollTimer=null;}
   if(roomChannel){await db.removeChannel(roomChannel);roomChannel=null;}
   currentRoom=null;
   show("home");
