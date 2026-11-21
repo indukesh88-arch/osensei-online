@@ -168,6 +168,16 @@ BEGIN
     DELETE FROM public.game_pending_attacks WHERE room_id=p_room_id;
   END IF;
 
+  -- The last surviving player wins immediately.
+  IF (SELECT count(*) FROM public.room_players rp
+      LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+      WHERE rp.room_id=p_room_id AND COALESCE(gps.is_eliminated,false)=false)=1 THEN
+    UPDATE public.game_states SET status='finished',updated_at=now() WHERE room_id=p_room_id;
+    UPDATE public.game_rooms SET status='finished' WHERE id=p_room_id;
+    RETURN jsonb_build_object('success',true,'eliminated',v_eliminated,
+      'defended',NOT v_eliminated,'game_over',true,'winner_player_id',v_attacker.id);
+  END IF;
+
   -- Whether the target was eliminated or successfully defended, the turn
   -- passes to the first active seat clockwise from the original attacker.
   SELECT rp.seat_number,rp.turn_order INTO v_next_seat,v_next_order
