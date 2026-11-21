@@ -305,7 +305,23 @@ async function joinRoom(){
   finally{btn.disabled=false;}
 }
 
+function resetEliminationPreview(){
+  specialActionsSignature="";
+  specialActionsRequest++;
+  dismissedPublicBattleKey="";
+  lastPublicBattleSnapshot=null;
+  if(botDefenceConfirmTimer){
+    clearTimeout(botDefenceConfirmTimer);
+    botDefenceConfirmTimer=null;
+  }
+  botDefenceConfirmInProgress=false;
+  botAttackResponseInProgress=false;
+  const panel=document.getElementById("specialActions");
+  if(panel)panel.innerHTML="";
+}
+
 async function openRoom(id,code,max){
+  if(currentRoom!==id)resetEliminationPreview();
   currentRoom=id;
   document.getElementById("displayCode").textContent=code;
   document.getElementById("seatInfo").textContent="Room capacity: "+max+" players";
@@ -1106,6 +1122,7 @@ async function startGame(){
     await authenticate();
     const {error}=await db.rpc("start_game",{p_room_id:currentRoom});
     if(error) throw error;
+    resetEliminationPreview();
     await refreshRoom();
   }catch(e){
     message("lobbyStatus","Could not start game: "+e.message);
