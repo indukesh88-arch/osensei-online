@@ -603,7 +603,7 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
             botDefenceConfirmInProgress=true;
             try{await confirmStagedDefence();}
             finally{botDefenceConfirmInProgress=false;}
-          },2200);
+          },4000);
         }
       }else{
         const waiting=document.createElement("div");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to confirm this response.";battle.appendChild(waiting);
@@ -625,17 +625,22 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
       const accept=document.createElement("button");accept.type="button";accept.className="secondary";accept.style.marginTop="8px";accept.textContent="Stage Accept Elimination";accept.onclick=()=>stageDefence("accept",[]);battle.append(actions,accept);
     }else if(target?.is_bot){
       const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="The bot is choosing its defence cards...";battle.appendChild(waiting);
+      // Show the public attack window before asking the bot to respond.
+      root.appendChild(battle);
       if(isRoomHost && !botAttackResponseInProgress){
         botAttackResponseInProgress=true;
-        try{
-          const {error:botError}=await db.rpc("run_bot_elimination_response",{p_room_id:currentRoom});
-          if(botError)throw botError;
-          specialActionsSignature="";
-          await refreshRoom();
-        }catch(e){
-          document.getElementById("gameStatus").textContent="Bot defence selection failed: "+e.message;
-        }finally{botAttackResponseInProgress=false;}
+        (async()=>{
+          try{
+            const {error:botError}=await db.rpc("run_bot_elimination_response",{p_room_id:currentRoom});
+            if(botError)throw botError;
+            specialActionsSignature="";
+            await refreshRoom();
+          }catch(e){
+            document.getElementById("gameStatus").textContent="Bot defence selection failed: "+e.message;
+          }finally{botAttackResponseInProgress=false;}
+        })();
       }
+      return;
     }else{
       const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to choose defence cards.";battle.appendChild(waiting);
     }
