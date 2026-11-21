@@ -466,7 +466,7 @@ function renderSpecialActions(players,me,cards){
       }
       return;
     }
-    if(cards.length && document.getElementById("gameRound").textContent!=="ROUND 1"){
+    if(cards.length && Number(document.getElementById("gameRound").textContent.replace("ROUND ",""))>=3){
       const form=document.createElement("div");
       const targetLabel=document.createElement("label");targetLabel.textContent="Target player";targetLabel.style.display="block";form.appendChild(targetLabel);
       const targetSelect=document.createElement("select");targetSelect.id="attackTarget";
