@@ -23,6 +23,9 @@ button{padding:13px 17px;border:1px solid #b08a4d;border-radius:7px;background:l
 button.secondary{background:#282020;border-color:#715b4a}
 button:disabled{opacity:.5}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.game-card-actions{display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-top:10px}
+.game-card-actions>#playCardBtn{align-self:flex-start}
+.game-card-actions>.panel{width:100%}
 .hidden{display:none!important}
 .status{font:13px Arial;color:#e3c77d;margin-top:12px;white-space:pre-wrap}
 .player{padding:12px;background:#292020;border:1px solid #554237;border-radius:7px;margin:8px 0;font:14px Arial;display:flex;justify-content:space-between}
@@ -169,10 +172,12 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div class="game-note">Your cards are private. Scroll sideways to view your full hand.</div>
   <div id="myHand" class="hand"></div>
   <div id="gameStatus" class="status"></div>
-  <button id="playCardBtn" onclick="playSelectedCard()" disabled>Play Card</button>
-  <div id="kappaSelectionControls" class="panel hidden" style="margin:10px 0;padding:12px"><div id="kappaSelectionStatus" class="game-note">Choose one card from the Open Pile.</div><div class="actions"><button id="confirmKappaBtn" onclick="confirmKappaCollection()" disabled>Confirm Collection</button><button class="secondary" onclick="cancelKappaSelection()">Cancel Selection</button></div></div>
+  <div id="gameCardActions" class="game-card-actions">
+    <button id="playCardBtn" onclick="playSelectedCard()" disabled>Play Card</button>
+    <div id="kappaSelectionControls" class="panel hidden" style="margin:0;padding:12px"><div id="kappaSelectionStatus" class="game-note">Choose one card from the Open Pile.</div><div class="actions"><button id="confirmKappaBtn" onclick="confirmKappaCollection()" disabled>Confirm Collection</button><button class="secondary" onclick="cancelKappaSelection()">Cancel Selection</button></div></div>
+    <div id="collectSelectionControls" class="panel hidden" style="margin:0;padding:12px"></div>
+  </div>
   <div id="specialActions" class="panel" style="margin-top:14px;padding:14px"></div>
-  <div id="collectSelectionControls" class="panel hidden" style="margin:10px 0;padding:12px"></div>
   <button class="secondary" onclick="returnToLobby()">Back to Room</button>
 </section>
 
@@ -887,7 +892,9 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
      dismissedPublicBattleKey===lastPublicBattleSnapshot._battleKey){
     lastPublicBattleSnapshot=null;
   }
-  if(displayBattle && dismissedPublicBattleKey===battleKey){
+  // A pending attack must never be hidden for its current target.
+  // Dismissal applies only to a completed/public battle preview.
+  if(!pending && displayBattle && dismissedPublicBattleKey===battleKey){
     root.innerHTML='';
     return;
   }
@@ -1016,9 +1023,13 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     }else{
       const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to choose defence cards.";battle.appendChild(waiting);
     }
-    const ok=document.createElement("button");ok.type="button";ok.textContent="OK";ok.style.marginTop="10px";
-    ok.onclick=()=>{dismissedPublicBattleKey=battleKey;root.innerHTML="";};
-    battle.appendChild(ok);
+    // The targeted player must keep the response panel visible until the
+    // pending attack is resolved. Only other players may dismiss this preview.
+    if(target?.id!==me.id){
+      const ok=document.createElement("button");ok.type="button";ok.textContent="OK";ok.style.marginTop="10px";
+      ok.onclick=()=>{dismissedPublicBattleKey=battleKey;root.innerHTML="";};
+      battle.appendChild(ok);
+    }
     root.appendChild(battle);
     return;
   }
