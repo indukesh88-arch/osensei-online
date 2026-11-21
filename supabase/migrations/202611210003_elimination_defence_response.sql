@@ -62,7 +62,6 @@ BEGIN
       RAISE EXCEPTION 'A defence card can only be selected once.';
     END IF;
 
-    FOREACH v_card IN ARRAY ARRAY[]::jsonb[] LOOP NULL; END LOOP;
     FOR v_card IN SELECT value FROM jsonb_array_elements(v_hand)
       WHERE value->>'id'=ANY(p_defence_card_ids)
     LOOP
