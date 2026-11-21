@@ -131,7 +131,6 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div class="game-note">Your cards are private. Scroll sideways to view your full hand.</div>
   <div id="myHand" class="hand"></div>
   <div id="gameStatus" class="status"></div>
-  <button id="drawCardBtn" onclick="drawGameCard()">Draw Card</button>
   <button id="playCardBtn" onclick="playSelectedCard()" disabled>Play Selected Card</button>
   <button class="secondary" onclick="returnToLobby()">Back to Room</button>
 </section>
@@ -152,6 +151,7 @@ let roomPollBusy=false;
 let botTurnInProgress=false;
 let selectedCardId=null;
 let cardsForCurrentHand=[];
+let autoDrawInProgress=false;
 
 function show(id){
   ["home","create","join","lobby","gameScreen"].forEach(x=>
@@ -310,7 +310,7 @@ async function showGameScreen(room,players){
     return;
   }
   const {data:handRow,error:handError}=await db.from("player_hands")
-    .select("cards").eq("room_id",currentRoom).eq("room_player_id",me.id).single();
+    .select("cards,last_draw_turn_number").eq("room_id",currentRoom).eq("room_player_id",me.id).single();
   document.getElementById("gameRound").textContent="ROUND "+state.current_round;
   const active=players.find(p=>p.seat_number===state.current_turn_seat);
   document.getElementById("gameTurn").textContent=active
@@ -340,14 +340,37 @@ async function showGameScreen(room,players){
     document.getElementById("gameStatus").textContent="Game table loaded, but your hand could not be read: "+handError.message;
     return;
   }
+
+  // Automatically process the start-of-turn draw once. The database RPC is
+  // idempotent by turn_number, so simultaneous refreshes cannot double-draw.
+  if(active?.id===me.id && handRow.last_draw_turn_number!==state.turn_number && !autoDrawInProgress){
+    autoDrawInProgress=true;
+    document.getElementById("gameStatus").textContent="Drawing your turn cards...";
+    try{
+      const {data,error}=await db.rpc("draw_game_card",{p_room_id:currentRoom});
+      if(error) throw error;
+      const drawn=data?.cards_drawn||0;
+      await showGameScreen(room,players);
+      if(drawn===0 && data?.draw_paused){
+        document.getElementById("gameStatus").textContent="The draw is paused under the deck-exhaustion rule. Play one card.";
+      }else if(drawn===0){
+        document.getElementById("gameStatus").textContent="Your hand is full. Skip the draw and play one card.";
+      }else{
+        document.getElementById("gameStatus").textContent="You drew "+drawn+" card"+(drawn===1?"":"s")+".";
+      }
+    }catch(e){
+      document.getElementById("gameStatus").textContent="Automatic draw failed: "+e.message;
+    }finally{
+      autoDrawInProgress=false;
+    }
+    return;
+  }
+
   const cards=Array.isArray(handRow.cards)?handRow.cards:[];
   cardsForCurrentHand=cards;
   if(!cards.some(card=>card.id===selectedCardId))selectedCardId=null;
   const playButton=document.getElementById("playCardBtn");
   playButton.disabled=active?.id!==me.id || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12"].includes(card.id)));
-  const drawButton=document.getElementById("drawCardBtn");
-  drawButton.disabled=active?.id!==me.id || cards.length>=12;
-  drawButton.textContent=active?.id===me.id?"Draw Card":"Waiting for your turn";
   cards.forEach(card=>{
     const el=document.createElement("button");
     el.type="button";
@@ -406,20 +429,6 @@ async function playSelectedCard(){
   await refreshRoom();
   document.getElementById("gameStatus").textContent=
     data.played_card+" played. "+data.cards_collected+" cards collected.";
-}
-async function drawGameCard(){
-  const btn=document.getElementById("drawCardBtn");
-  if(!currentRoom || btn.disabled)return;
-  btn.disabled=true;
-  document.getElementById("gameStatus").textContent="Drawing a card...";
-  const {data,error}=await db.rpc("draw_game_card",{p_room_id:currentRoom});
-  if(error){
-    document.getElementById("gameStatus").textContent=error.message;
-    btn.disabled=false;
-    return;
-  }
-  await refreshRoom();
-  document.getElementById("gameStatus").textContent="Card drawn. "+data.cards_in_hand+" cards in your hand; "+data.cards_remaining+" cards remain in the draw deck.";
 }
 function returnToLobby(){show("lobby");}
 
