@@ -234,10 +234,13 @@ BEGIN
 
   -- Kappa: take one randomly chosen card from anywhere in the Open Pile.
   IF v_collection_kind = 'kappa' AND jsonb_array_length(v_pile) > 0 AND v_capacity > 0 THEN
-    v_index := floor(random() * jsonb_array_length(v_pile))::integer;
-    SELECT value INTO v_selected
+    -- Prefer the highest-point card in the pile; break ties in favour of the topmost card.
+    SELECT (ordinality - 1)::integer, value
+    INTO v_index, v_selected
     FROM jsonb_array_elements(v_pile) WITH ORDINALITY AS e(value, ordinality)
-    WHERE ordinality = v_index + 1;
+    ORDER BY COALESCE((value->>'points')::integer, (value->>'number')::integer, 0) DESC,
+             ordinality DESC
+    LIMIT 1;
 
     SELECT COALESCE(jsonb_agg(value ORDER BY ordinality), '[]'::jsonb)
     INTO v_remaining
@@ -324,8 +327,8 @@ BEGIN
       AND COALESCE(gps.is_eliminated, false) = false
       AND LEAST(2, jsonb_array_length(COALESCE(ph.cards, '[]'::jsonb))) <= v_capacity
     ORDER BY
-      CASE WHEN jsonb_array_length(COALESCE(ph.cards, '[]'::jsonb)) > 0 THEN 0 ELSE 1 END,
-      random()
+      jsonb_array_length(COALESCE(ph.cards, '[]'::jsonb)) DESC,
+      rp.turn_order
     LIMIT 1;
 
     IF v_target_id IS NOT NULL THEN
