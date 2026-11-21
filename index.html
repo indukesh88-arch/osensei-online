@@ -45,6 +45,14 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 .open-stack-card .stack-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .open-stack-card.special{background:linear-gradient(110deg,#e4d1ad,#bda27a)}
 .open-stack-empty{font:12px Arial;color:#bcae9d;padding:12px;text-align:center}
+#cardAnimationLayer{position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden}
+.animation-card{position:fixed;width:88px;height:122px;border:2px solid #c4a66b;border-radius:8px;background:linear-gradient(145deg,#f0e4c8,#cbb68d);color:#39291d;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:7px;box-shadow:0 8px 24px #000b;font:bold 12px Georgia;transform-style:preserve-3d;backface-visibility:hidden}
+.animation-card .animation-number{font-size:25px;margin:5px 0}
+.animation-caption{position:fixed;left:50%;top:18%;transform:translateX(-50%);background:#171112ed;border:1px solid #c5a263;border-radius:20px;padding:9px 16px;color:#f5d994;font:12px Arial;letter-spacing:.5px;white-space:nowrap;box-shadow:0 4px 18px #0009}
+.opponent[data-player-id]{transition:box-shadow .25s,border-color .25s}
+.opponent.animation-recipient{border-color:#ffe08a;box-shadow:0 0 0 3px #e2c07188,0 0 22px #e2c07188}
+#myHand.animation-recipient{outline:2px solid #ffe08a;border-radius:10px;box-shadow:0 0 22px #e2c07188}
+
 .opponents{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;margin:12px 0}
 .opponent{background:#292020;border:1px solid #5b4436;border-radius:8px;padding:10px;font:12px Arial}
 .opponent.active{border-color:#e2c071;box-shadow:0 0 0 1px #e2c07155}
@@ -139,6 +147,7 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div class="game-top"><span id="gameRound">ROUND 1</span><span id="gameTurn">WAITING FOR TURN</span></div>
   <h2 style="text-align:center;margin-top:18px">The Seasons Table</h2>
   <div id="opponents" class="opponents"></div>
+  <div id="cardAnimationLayer" aria-live="polite"></div>
   <div class="game-board">
     <div class="pile"><div class="pile-label">DRAW DECK</div><div class="pile-card back">ŌSENSEI</div><div class="small" id="drawCount">Loading...</div></div>
     <div class="pile"><div class="pile-label">OPEN PILE</div><div id="openStack" class="open-stack"><div class="open-stack-empty">EMPTY</div></div><div class="small" id="openCount">0 cards</div></div>
@@ -249,12 +258,13 @@ async function openRoom(id,code,max){
   document.getElementById("displayCode").textContent=code;
   document.getElementById("seatInfo").textContent="Room capacity: "+max+" players";
   show("lobby");
-  await refreshRoom();
   if(roomChannel) await db.removeChannel(roomChannel);
   roomChannel=db.channel("room-"+id)
     .on("postgres_changes",{event:"*",schema:"public",table:"room_players",filter:"room_id=eq."+id},refreshRoom)
     .on("postgres_changes",{event:"*",schema:"public",table:"game_rooms",filter:"id=eq."+id},refreshRoom)
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"game_animation_events",filter:"room_id=eq."+id},payload=>showCardAnimationEvent(payload.new))
     .subscribe();
+  await refreshRoom();
   // Keep every player in sync even when game-state tables are not enabled for Realtime.
   if(roomPollTimer) clearInterval(roomPollTimer);
   roomPollTimer=setInterval(async()=>{
@@ -347,6 +357,7 @@ async function showGameScreen(room,players){
   players.forEach(p=>{
     const el=document.createElement("div");
     el.className="opponent"+(p.seat_number===state.current_turn_seat?" active":"");
+    el.dataset.playerId=p.id;
     const title=document.createElement("strong");
     title.textContent=p.id===me.id?"YOU · "+p.player_name:p.player_name+(p.is_bot?" · BOT":"");
     const sub=document.createElement("div");
@@ -448,6 +459,72 @@ async function showGameScreen(room,players){
       botTurnInProgress=false;
     }
   }
+}
+function showCardAnimationEvent(event){
+  if(!event || !currentRoom)return;
+  const layer=document.getElementById("cardAnimationLayer");
+  const board=document.querySelector(".game-board");
+  const pile=document.getElementById("openStack");
+  if(!layer || !board || !pile)return;
+  layer.innerHTML="";
+  const boardRect=board.getBoundingClientRect();
+  const pileRect=pile.getBoundingClientRect();
+  const startX=boardRect.left+boardRect.width/2-44;
+  const startY=boardRect.top+boardRect.height/2-61;
+  const endX=pileRect.left+pileRect.width/2-44;
+  const endY=pileRect.top+pileRect.height/2-61;
+  const played=event.played_card||{name:"Typhoon",category:"weather"};
+  const makeCard=(card)=>{
+    const el=document.createElement("div");
+    el.className="animation-card";
+    const title=document.createElement("div");
+    title.textContent=cardLabel(card);
+    const number=document.createElement("div");
+    number.className="animation-number";
+    number.textContent=card&&card.number!==undefined?String(card.number):"✿";
+    const meta=document.createElement("div");
+    meta.textContent=cardDetails(card)||(card?.category||"ŌSENSEI");
+    el.append(title,number,meta);
+    return el;
+  };
+  const caption=document.createElement("div");
+  caption.className="animation-caption";
+  caption.textContent=(event.actor_name||"A player")+" played "+cardLabel(played);
+  layer.appendChild(caption);
+  const playedEl=makeCard(played);
+  playedEl.style.left=startX+"px";playedEl.style.top=startY+"px";
+  layer.appendChild(playedEl);
+  const animations=[];
+  animations.push(playedEl.animate([
+    {transform:"translate(0,28px) scale(.72) rotateY(180deg)",opacity:0},
+    {transform:"translate(0,0) scale(1) rotateY(0deg)",opacity:1,offset:.72},
+    {transform:"translate("+(endX-startX)+"px,"+(endY-startY)+"px) scale(.82) rotateY(0deg)",opacity:1}
+  ],{duration:950,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
+  const collected=Array.isArray(event.collected_cards)?event.collected_cards:[];
+  if(collected.length){
+    const target=event.recipient_player_id===event.actor_player_id
+      ?document.getElementById("myHand")
+      :document.querySelector('.opponent[data-player-id="'+event.recipient_player_id+'"]');
+    const targetRect=target?target.getBoundingClientRect():pileRect;
+    const targetX=targetRect.left+targetRect.width/2-44;
+    const targetY=targetRect.top+targetRect.height/2-61;
+    collected.forEach((card,index)=>{
+      const el=makeCard(card);
+      el.style.left=(pileRect.left+pileRect.width/2-44+index*8)+"px";
+      el.style.top=(pileRect.top+pileRect.height/2-61-index*5)+"px";
+      layer.appendChild(el);
+      animations.push(el.animate([
+        {transform:"translate(0,0) scale(.88)",opacity:1},
+        {transform:"translate("+(targetX-(pileRect.left+pileRect.width/2-44))+"px,"+(targetY-(pileRect.top+pileRect.height/2-61))+"px) scale(.62) rotate(-8deg)",opacity:0}
+      ],{duration:1250,delay:350+index*100,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
+    });
+    if(target){
+      target.classList.add("animation-recipient");
+      setTimeout(()=>target.classList.remove("animation-recipient"),1900);
+    }
+    caption.textContent=(event.actor_name||"A player")+" played "+cardLabel(played)+" · "+collected.length+" card(s) collected";
+  }
+  Promise.all(animations.map(a=>a.finished.catch(()=>null))).then(()=>{layer.innerHTML="";});
 }
 function selectHandCard(cardId){
   selectedCardId=cardId;
