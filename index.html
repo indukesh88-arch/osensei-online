@@ -38,6 +38,21 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 .pile-label{font:11px Arial;letter-spacing:2px;color:#c9a96a;margin-bottom:10px}
 .pile-card{margin:auto;width:88px;height:112px;border:2px solid #c6a66a;border-radius:7px;background:linear-gradient(145deg,#eee0bd,#cbb58c);color:#39291d;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:7px;box-shadow:0 5px 12px #0008;font: bold 13px Georgia;text-align:center;overflow:hidden}
 .pile-card.back{background:repeating-linear-gradient(45deg,#5a2028,#5a2028 7px,#32171d 7px,#32171d 14px);color:#e8d5a5}
+.open-stack{max-height:220px;overflow-y:auto;overflow-x:hidden;padding:3px 7px 8px;text-align:left;scrollbar-color:#8b6848 #21191a}
+.open-stack-card{height:48px;min-height:48px;margin-bottom:-13px;position:relative;border:1px solid #b89a65;border-radius:6px;background:linear-gradient(110deg,#f0e4c8,#cbb68d);color:#39291d;display:flex;align-items:center;gap:10px;padding:5px 9px;box-shadow:0 3px 7px #0008;font: bold 12px Georgia;overflow:hidden}
+.open-stack-card:last-child{margin-bottom:0}
+.open-stack-card .stack-number{flex:0 0 27px;height:27px;border:1px solid #8e7048;border-radius:4px;display:flex;align-items:center;justify-content:center;font:bold 16px Georgia;background:#e8d8b5}
+.open-stack-card .stack-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.open-stack-card.special{background:linear-gradient(110deg,#e4d1ad,#bda27a)}
+.open-stack-empty{font:12px Arial;color:#bcae9d;padding:12px;text-align:center}
+#cardAnimationLayer{position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden}
+.animation-card{position:fixed;width:88px;height:122px;border:2px solid #c4a66b;border-radius:8px;background:linear-gradient(145deg,#f0e4c8,#cbb68d);color:#39291d;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:7px;box-shadow:0 8px 24px #000b;font:bold 12px Georgia;transform-style:preserve-3d;backface-visibility:hidden}
+.animation-card .animation-number{font-size:25px;margin:5px 0}
+.animation-caption{position:fixed;left:50%;top:18%;transform:translateX(-50%);background:#171112ed;border:1px solid #c5a263;border-radius:20px;padding:9px 16px;color:#f5d994;font:12px Arial;letter-spacing:.5px;white-space:nowrap;box-shadow:0 4px 18px #0009}
+.opponent[data-player-id]{transition:box-shadow .25s,border-color .25s}
+.opponent.animation-recipient{border-color:#ffe08a;box-shadow:0 0 0 3px #e2c07188,0 0 22px #e2c07188}
+#myHand.animation-recipient{outline:2px solid #ffe08a;border-radius:10px;box-shadow:0 0 22px #e2c07188}
+
 .opponents{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;margin:12px 0}
 .opponent{background:#292020;border:1px solid #5b4436;border-radius:8px;padding:10px;font:12px Arial}
 .opponent.active{border-color:#e2c071;box-shadow:0 0 0 1px #e2c07155}
@@ -49,6 +64,15 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 .hand-card .card-number{font:bold 28px Georgia}
 .hand-card .card-meta{font:10px Arial;letter-spacing:1px;text-transform:uppercase}
 .game-note{font:12px/1.5 Arial;color:#bcae9d}
+.public-battle{background:#151112;border:1px solid #a17a4b;border-radius:9px;padding:12px;margin:12px 0}
+.public-battle-title{font:bold 12px Arial;letter-spacing:1.5px;color:#e4c77f;margin:4px 0 8px}
+.public-battle-player{font:13px Arial;color:#eadcc6;margin:6px 0}
+.public-battle-cards{display:flex;flex-wrap:wrap;gap:7px;margin:7px 0 12px}
+.public-battle-card{min-width:92px;max-width:145px;flex:1 1 92px;background:linear-gradient(145deg,#f0e4c8,#cbb68d);color:#39291d;border:1px solid #b99a65;border-radius:6px;padding:8px 6px;text-align:center;box-shadow:0 3px 8px #0006}
+.public-battle-card strong{display:block;font:bold 12px Georgia}
+.public-battle-card span{display:block;font:10px/1.4 Arial;margin-top:4px}
+.public-battle-divider{height:1px;background:#624a38;margin:12px 0}
+.public-battle-status{font:12px/1.5 Arial;color:#e6cc91;margin:8px 0}
 @media(max-width:420px){.pile{min-height:135px}.hand-card{flex-basis:100px;min-height:145px}}
 </style>
 </head>
@@ -123,15 +147,16 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div class="game-top"><span id="gameRound">ROUND 1</span><span id="gameTurn">WAITING FOR TURN</span></div>
   <h2 style="text-align:center;margin-top:18px">The Seasons Table</h2>
   <div id="opponents" class="opponents"></div>
+  <div id="cardAnimationLayer" aria-live="polite"></div>
   <div class="game-board">
     <div class="pile"><div class="pile-label">DRAW DECK</div><div class="pile-card back">ŌSENSEI</div><div class="small" id="drawCount">Loading...</div></div>
-    <div class="pile"><div class="pile-label">OPEN PILE</div><div id="openTop" class="pile-card">EMPTY</div><div class="small" id="openCount">0 cards</div></div>
+    <div class="pile"><div class="pile-label">OPEN PILE</div><div id="openStack" class="open-stack"><div class="open-stack-empty">EMPTY</div></div><div class="small" id="openCount">0 cards</div></div>
   </div>
   <h2>Your Hand</h2>
   <div class="game-note">Your cards are private. Scroll sideways to view your full hand.</div>
   <div id="myHand" class="hand"></div>
   <div id="gameStatus" class="status"></div>
-  <button id="drawCardBtn" onclick="drawGameCard()">Draw Card</button>
+  <div id="specialActions" class="panel" style="margin-top:14px;padding:14px"></div>
   <button id="playCardBtn" onclick="playSelectedCard()" disabled>Play Selected Card</button>
   <button class="secondary" onclick="returnToLobby()">Back to Room</button>
 </section>
@@ -146,12 +171,23 @@ const db = window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 let currentUser=null;
 let currentRoom=null;
+let currentRoomPlayerId=null;
 let roomChannel=null;
 let roomPollTimer=null;
 let roomPollBusy=false;
 let botTurnInProgress=false;
 let selectedCardId=null;
 let cardsForCurrentHand=[];
+let autoDrawInProgress=false;
+let selectedAttackCardIds=[];
+let selectedDefenceCardIds=[];
+let specialActionsSignature='';
+let specialActionsRequest=0;
+let botAttackResponseInProgress=false;
+let botDefenceConfirmTimer=null;
+let botDefenceConfirmInProgress=false;
+let dismissedPublicBattleKey='';
+let lastPublicBattleSnapshot=null;
 
 function show(id){
   ["home","create","join","lobby","gameScreen"].forEach(x=>
@@ -224,12 +260,13 @@ async function openRoom(id,code,max){
   document.getElementById("displayCode").textContent=code;
   document.getElementById("seatInfo").textContent="Room capacity: "+max+" players";
   show("lobby");
-  await refreshRoom();
   if(roomChannel) await db.removeChannel(roomChannel);
   roomChannel=db.channel("room-"+id)
     .on("postgres_changes",{event:"*",schema:"public",table:"room_players",filter:"room_id=eq."+id},refreshRoom)
     .on("postgres_changes",{event:"*",schema:"public",table:"game_rooms",filter:"id=eq."+id},refreshRoom)
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"game_animation_events",filter:"room_id=eq."+id},payload=>showCardAnimationEvent(payload.new))
     .subscribe();
+  await refreshRoom();
   // Keep every player in sync even when game-state tables are not enabled for Realtime.
   if(roomPollTimer) clearInterval(roomPollTimer);
   roomPollTimer=setInterval(async()=>{
@@ -238,7 +275,7 @@ async function openRoom(id,code,max){
     try{await refreshRoom();}
     catch(e){message("gameStatus","Connection refresh failed: "+e.message);}
     finally{roomPollBusy=false;}
-  },1500);
+  },4000);
 }
 
 async function refreshRoom(){
@@ -295,8 +332,9 @@ function cardDetails(card){
   return bits.join(" · ");
 }
 async function showGameScreen(room,players){
+  const firstGameRender=document.getElementById("gameScreen").classList.contains("hidden");
   show("gameScreen");
-  document.getElementById("gameStatus").textContent="Loading your cards...";
+  if(firstGameRender)document.getElementById("gameStatus").textContent="Loading your cards...";
   const {data:state,error:stateError}=await db.from("game_states")
     .select("status,current_round,current_turn_seat,draw_deck,open_pile,turn_number")
     .eq("room_id",currentRoom).single();
@@ -305,12 +343,13 @@ async function showGameScreen(room,players){
     return;
   }
   const me=players.find(p=>p.user_id===currentUser?.id);
+  currentRoomPlayerId=me?.id||null;
   if(!me){
     document.getElementById("gameStatus").textContent="Your player seat could not be found in this room.";
     return;
   }
   const {data:handRow,error:handError}=await db.from("player_hands")
-    .select("cards").eq("room_id",currentRoom).eq("room_player_id",me.id).single();
+    .select("cards,last_draw_turn_number").eq("room_id",currentRoom).eq("room_player_id",me.id).single();
   document.getElementById("gameRound").textContent="ROUND "+state.current_round;
   const active=players.find(p=>p.seat_number===state.current_turn_seat);
   document.getElementById("gameTurn").textContent=active
@@ -321,6 +360,7 @@ async function showGameScreen(room,players){
   players.forEach(p=>{
     const el=document.createElement("div");
     el.className="opponent"+(p.seat_number===state.current_turn_seat?" active":"");
+    el.dataset.playerId=p.id;
     const title=document.createElement("strong");
     title.textContent=p.id===me.id?"YOU · "+p.player_name:p.player_name+(p.is_bot?" · BOT":"");
     const sub=document.createElement("div");
@@ -332,22 +372,70 @@ async function showGameScreen(room,players){
   const pile=Array.isArray(state.open_pile)?state.open_pile:[];
   document.getElementById("drawCount").textContent=deck.length+" cards remaining";
   document.getElementById("openCount").textContent=pile.length+" cards";
-  const top=document.getElementById("openTop");
-  top.textContent=pile.length?cardLabel(pile[pile.length-1]):"EMPTY";
+  const openStack=document.getElementById("openStack");
+  openStack.innerHTML="";
+  if(!pile.length){
+    const empty=document.createElement("div");
+    empty.className="open-stack-empty";
+    empty.textContent="EMPTY";
+    openStack.appendChild(empty);
+  }else{
+    // Render the pile in its stored order so the newest card appears at the top.
+    // Only each card's upper strip is exposed.
+    pile.forEach(card=>{
+      const strip=document.createElement("div");
+      const isSpecial=!(card && (card.category==="season" || card.category==="weather"));
+      strip.className="open-stack-card"+(isSpecial?" special":"");
+      const number=document.createElement("span");
+      number.className="stack-number";
+      const value=card && typeof card==="object" ? (card.number??card.value) : null;
+      number.textContent=value!==undefined&&value!==null?String(value):(isSpecial?"✿":"—");
+      const name=document.createElement("span");
+      name.className="stack-name";
+      name.textContent=cardLabel(card);
+      strip.append(number,name);
+      openStack.appendChild(strip);
+    });
+    // Keep the newest card visible at the bottom; scroll upward to inspect older cards.
+    openStack.scrollTop=openStack.scrollHeight;
+  }
   const hand=document.getElementById("myHand");
   hand.innerHTML="";
   if(handError){
     document.getElementById("gameStatus").textContent="Game table loaded, but your hand could not be read: "+handError.message;
     return;
   }
+
+  // Automatically process the start-of-turn draw once. The database RPC is
+  // idempotent by turn_number, so simultaneous refreshes cannot double-draw.
+  if(active?.id===me.id && handRow.last_draw_turn_number!==state.turn_number && !autoDrawInProgress){
+    autoDrawInProgress=true;
+    document.getElementById("gameStatus").textContent="Drawing your turn cards...";
+    try{
+      const {data,error}=await db.rpc("draw_game_card",{p_room_id:currentRoom});
+      if(error) throw error;
+      const drawn=data?.cards_drawn||0;
+      await showGameScreen(room,players);
+      if(drawn===0 && data?.draw_paused){
+        document.getElementById("gameStatus").textContent="The draw is paused under the deck-exhaustion rule. Play one card.";
+      }else if(drawn===0){
+        document.getElementById("gameStatus").textContent="Your hand is full. Skip the draw and play one card.";
+      }else{
+        document.getElementById("gameStatus").textContent="You drew "+drawn+" card"+(drawn===1?"":"s")+".";
+      }
+    }catch(e){
+      document.getElementById("gameStatus").textContent="Automatic draw failed: "+e.message;
+    }finally{
+      autoDrawInProgress=false;
+    }
+    return;
+  }
+
   const cards=Array.isArray(handRow.cards)?handRow.cards:[];
   cardsForCurrentHand=cards;
   if(!cards.some(card=>card.id===selectedCardId))selectedCardId=null;
   const playButton=document.getElementById("playCardBtn");
   playButton.disabled=active?.id!==me.id || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12"].includes(card.id)));
-  const drawButton=document.getElementById("drawCardBtn");
-  drawButton.disabled=active?.id!==me.id || cards.length>=12;
-  drawButton.textContent=active?.id===me.id?"Draw Card":"Waiting for your turn";
   cards.forEach(card=>{
     const el=document.createElement("button");
     el.type="button";
@@ -361,6 +449,7 @@ async function showGameScreen(room,players){
     el.append(title,number,meta);hand.appendChild(el);
   });
   document.getElementById("gameStatus").textContent="Your hand: "+cards.length+" cards.";
+  renderSpecialActions(players,me,cards,state.current_turn_seat,state.current_round,room.host_id===currentUser?.id);
   if(active?.is_bot && room.host_id===currentUser?.id && !botTurnInProgress){
     botTurnInProgress=true;
     document.getElementById("gameStatus").textContent=active.player_name+" is thinking...";
@@ -374,6 +463,79 @@ async function showGameScreen(room,players){
       botTurnInProgress=false;
     }
   }
+}
+function myPlayerIdForAnimation(){
+  return currentRoomPlayerId;
+}
+function showCardAnimationEvent(event){
+  if(!event || !currentRoom)return;
+  const layer=document.getElementById("cardAnimationLayer");
+  const board=document.querySelector(".game-board");
+  const pile=document.getElementById("openStack");
+  if(!layer || !board || !pile)return;
+  layer.innerHTML="";
+  const boardRect=board.getBoundingClientRect();
+  const pileRect=pile.getBoundingClientRect();
+  const actorArea=event.actor_player_id===myPlayerIdForAnimation()
+    ?document.getElementById("myHand")
+    :document.querySelector('.opponent[data-player-id="'+event.actor_player_id+'"]');
+  const actorRect=actorArea?actorArea.getBoundingClientRect():boardRect;
+  const startX=actorRect.left+actorRect.width/2-44;
+  const startY=actorRect.top+actorRect.height/2-61;
+  const endX=pileRect.left+pileRect.width/2-44;
+  const endY=pileRect.top+pileRect.height/2-61;
+  const played=event.played_card||{name:"Typhoon",category:"weather"};
+  const makeCard=(card)=>{
+    const el=document.createElement("div");
+    el.className="animation-card";
+    const title=document.createElement("div");
+    title.textContent=cardLabel(card);
+    const number=document.createElement("div");
+    number.className="animation-number";
+    number.textContent=card&&card.number!==undefined?String(card.number):"✿";
+    const meta=document.createElement("div");
+    meta.textContent=cardDetails(card)||(card?.category||"ŌSENSEI");
+    el.append(title,number,meta);
+    return el;
+  };
+  const caption=document.createElement("div");
+  caption.className="animation-caption";
+  caption.textContent=(event.actor_name||"A player")+" played "+cardLabel(played);
+  layer.appendChild(caption);
+  const playedEl=makeCard(played);
+  playedEl.style.left=startX+"px";playedEl.style.top=startY+"px";
+  layer.appendChild(playedEl);
+  const animations=[];
+  animations.push(playedEl.animate([
+    {transform:"translate(0,28px) scale(.72) rotateY(180deg)",opacity:0},
+    {transform:"translate(0,0) scale(1) rotateY(0deg)",opacity:1,offset:.72},
+    {transform:"translate("+(endX-startX)+"px,"+(endY-startY)+"px) scale(.82) rotateY(0deg)",opacity:1}
+  ],{duration:1900,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
+  const collected=Array.isArray(event.collected_cards)?event.collected_cards:[];
+  if(collected.length){
+    const target=event.recipient_player_id===myPlayerIdForAnimation()
+      ?document.getElementById("myHand")
+      :document.querySelector('.opponent[data-player-id="'+event.recipient_player_id+'"]');
+    const targetRect=target?target.getBoundingClientRect():pileRect;
+    const targetX=targetRect.left+targetRect.width/2-44;
+    const targetY=targetRect.top+targetRect.height/2-61;
+    collected.forEach((card,index)=>{
+      const el=makeCard(card);
+      el.style.left=(pileRect.left+pileRect.width/2-44+index*8)+"px";
+      el.style.top=(pileRect.top+pileRect.height/2-61-index*5)+"px";
+      layer.appendChild(el);
+      animations.push(el.animate([
+        {transform:"translate(0,0) scale(.88)",opacity:1},
+        {transform:"translate("+(targetX-(pileRect.left+pileRect.width/2-44))+"px,"+(targetY-(pileRect.top+pileRect.height/2-61))+"px) scale(.62) rotate(-8deg)",opacity:0}
+      ],{duration:2100,delay:2000+index*650,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
+    });
+    if(target){
+      target.classList.add("animation-recipient");
+      setTimeout(()=>target.classList.remove("animation-recipient"),5200);
+    }
+    caption.textContent=(event.actor_name||"A player")+" played "+cardLabel(played)+" · "+collected.length+" card(s) collected";
+  }
+  Promise.all(animations.map(a=>a.finished.catch(()=>null))).then(()=>{layer.innerHTML="";});
 }
 function selectHandCard(cardId){
   selectedCardId=cardId;
@@ -407,20 +569,265 @@ async function playSelectedCard(){
   document.getElementById("gameStatus").textContent=
     data.played_card+" played. "+data.cards_collected+" cards collected.";
 }
-async function drawGameCard(){
-  const btn=document.getElementById("drawCardBtn");
-  if(!currentRoom || btn.disabled)return;
-  btn.disabled=true;
-  document.getElementById("gameStatus").textContent="Drawing a card...";
-  const {data,error}=await db.rpc("draw_game_card",{p_room_id:currentRoom});
+
+function appendPublicBattleCards(root,title,cards){
+  const heading=document.createElement("div");
+  heading.className="public-battle-title";
+  heading.textContent=title;
+  root.appendChild(heading);
+  const list=document.createElement("div");
+  list.className="public-battle-cards";
+  (Array.isArray(cards)?cards:[]).forEach(card=>{
+    const item=document.createElement("div");
+    item.className="public-battle-card";
+    const name=document.createElement("strong");
+    name.textContent=cardLabel(card);
+    const details=document.createElement("span");
+    details.textContent=cardDetails(card)||(card&&card.category?String(card.category).toUpperCase():"SPECIAL CARD");
+    item.append(name,details);
+    list.appendChild(item);
+  });
+  if(!list.children.length){
+    const empty=document.createElement("div");
+    empty.className="game-note";
+    empty.textContent="No cards selected.";
+    list.appendChild(empty);
+  }
+  root.appendChild(list);
+}
+async function stageDefence(action,cardIds){
+  const {error}=await db.rpc("stage_elimination_defence",{
+    p_room_id:currentRoom,p_action:action,p_defence_card_ids:cardIds
+  });
+  if(error){document.getElementById("gameStatus").textContent=error.message;return;}
+  specialActionsSignature="";
+  await refreshRoom();
+}
+async function confirmStagedDefence(){
+  if(!currentRoom)return;
+  const {data,error}=await db.rpc("confirm_elimination_defence",{p_room_id:currentRoom});
+  if(error){document.getElementById("gameStatus").textContent=error.message;return;}
+  specialActionsSignature="";
+  document.getElementById("gameStatus").textContent=data.eliminated
+    ?"Player eliminated. Their remaining hand was transferred to the attacker."
+    :data.redirected?"Attack redirected.":"Defence confirmed. Both players' played cards are now in the Play Pile.";
+  await refreshRoom();
+}
+async function cancelStagedDefence(){
+  const {error}=await db.rpc("cancel_staged_elimination_defence",{p_room_id:currentRoom});
+  if(error){document.getElementById("gameStatus").textContent=error.message;return;}
+  specialActionsSignature="";
+  await refreshRoom();
+}
+async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRound,isRoomHost){
+  const root=document.getElementById("specialActions");
+  const request=++specialActionsRequest;
+  const {data:pending,error}=await db.from("game_pending_attacks").select("*").eq("room_id",currentRoom).maybeSingle();
+  if(request!==specialActionsRequest || !root.isConnected)return;
   if(error){
-    document.getElementById("gameStatus").textContent=error.message;
-    btn.disabled=false;
+    const signature="error:"+error.message;
+    if(signature===specialActionsSignature)return;
+    specialActionsSignature=signature;
+    root.innerHTML="";
+    const note=document.createElement("p");note.className="game-note";note.textContent="Attack status unavailable: "+error.message;root.appendChild(note);
     return;
   }
-  await refreshRoom();
-  document.getElementById("gameStatus").textContent="Card drawn. "+data.cards_in_hand+" cards in your hand; "+data.cards_remaining+" cards remain in the draw deck.";
+
+  let battleKey='';
+  if(pending){
+    battleKey=JSON.stringify([
+      currentRoom,pending.attacker_player_id,pending.target_player_id,
+      pending.created_at,pending.attack_points,pending.attack_kind,
+      pending.attack_cards
+    ]);
+    lastPublicBattleSnapshot={...pending,_battleKey:battleKey};
+  }
+  const displayBattle=pending || (
+    lastPublicBattleSnapshot &&
+    dismissedPublicBattleKey!==lastPublicBattleSnapshot._battleKey
+      ?lastPublicBattleSnapshot:null
+  );
+  battleKey=displayBattle?displayBattle._battleKey:'';
+  if(!displayBattle && lastPublicBattleSnapshot &&
+     dismissedPublicBattleKey===lastPublicBattleSnapshot._battleKey){
+    lastPublicBattleSnapshot=null;
+  }
+  if(displayBattle && dismissedPublicBattleKey===battleKey){
+    root.innerHTML='';
+    return;
+  }
+  const signature=JSON.stringify([
+    currentRoom,me.id,currentTurnSeat,currentRound,Boolean(pending),
+    cards.map(card=>card.id),
+    displayBattle?[
+      displayBattle.attacker_player_id,displayBattle.target_player_id,
+      displayBattle.created_at,displayBattle.attack_points,displayBattle.attack_kind,
+      displayBattle.defence_action,displayBattle.defence_card_ids,
+      displayBattle.defence_cards
+    ]:null
+  ]);
+  if(signature===specialActionsSignature){
+    if(pending && !pending.defence_action){
+      const target=players.find(p=>p.id===pending.target_player_id);
+      if(target?.is_bot && isRoomHost && !botAttackResponseInProgress){
+        botAttackResponseInProgress=true;
+        try{
+          const {error:botError}=await db.rpc("run_bot_elimination_response",{p_room_id:currentRoom});
+          if(botError)throw botError;
+          specialActionsSignature="";
+          await refreshRoom();
+        }catch(e){
+          document.getElementById("gameStatus").textContent="Bot defence selection failed: "+e.message;
+        }finally{botAttackResponseInProgress=false;}
+      }
+    }
+    return;
+  }
+  specialActionsSignature=signature;
+  root.innerHTML="";
+  const heading=document.createElement("h2");heading.textContent="Elimination & Defence";root.appendChild(heading);
+  const hint=document.createElement("div");hint.className="game-note";hint.textContent="Attacks unlock in round 3. Select Season/Weather cards totaling at least 21 points; Sensei and Nure-Onna are optional special cards.";root.appendChild(hint);
+
+  if(displayBattle){
+    if(!pending){
+      const attacker=players.find(p=>p.id===displayBattle.attacker_player_id);
+      const target=players.find(p=>p.id===displayBattle.target_player_id);
+      const battle=document.createElement("div");battle.className="public-battle";
+      const status=document.createElement("div");status.className="public-battle-status";
+      status.textContent="Elimination response completed: "+(attacker?.player_name||"A player")+" challenged "+(target?.player_name||"another player")+" with "+displayBattle.attack_points+" points.";
+      battle.appendChild(status);
+      appendPublicBattleCards(battle,"ATTACK CARDS",displayBattle.attack_cards||[]);
+      if(displayBattle.defence_action){
+        const actionNames={accept:"ACCEPTED ELIMINATION",points:"21+ POINT DEFENCE",silkworm:"SILKWORM SHIELD",tsubaki:"TSUBAKI FLOWER",bonsai:"BONSAI DEFENCE"};
+        const action=document.createElement("div");action.className="public-battle-status";
+        action.textContent=(target?.player_name||"Target")+" selected: "+(actionNames[displayBattle.defence_action]||displayBattle.defence_action.toUpperCase());
+        battle.appendChild(action);
+        appendPublicBattleCards(battle,"DEFENCE CARDS",displayBattle.defence_cards||[]);
+      }
+      const ok=document.createElement("button");ok.type="button";ok.textContent="OK";ok.style.marginTop="10px";
+      ok.onclick=()=>{dismissedPublicBattleKey=battleKey;lastPublicBattleSnapshot=null;specialActionsSignature="";root.innerHTML="";};
+      battle.appendChild(ok);
+      root.appendChild(battle);
+      return;
+    }
+    const target=players.find(p=>p.id===pending.target_player_id);
+    const attacker=players.find(p=>p.id===pending.attacker_player_id);
+    const battle=document.createElement("div");battle.className="public-battle";
+    const status=document.createElement("div");status.className="public-battle-status";
+    status.textContent=(attacker?.player_name||"A player")+" has challenged "+(target?.player_name||"another player")+" with "+pending.attack_points+" points.";
+    battle.appendChild(status);
+    appendPublicBattleCards(battle,"ATTACK CARDS",pending.attack_cards||[]);
+    const divider=document.createElement("div");divider.className="public-battle-divider";battle.appendChild(divider);
+
+    if(pending.defence_action){
+      const actionNames={accept:"ACCEPTED ELIMINATION",points:"21+ POINT DEFENCE",silkworm:"SILKWORM SHIELD",tsubaki:"TSUBAKI FLOWER",bonsai:"BONSAI DEFENCE"};
+      const action=document.createElement("div");action.className="public-battle-status";
+      action.textContent=(target?.player_name||"Target")+" selected: "+(actionNames[pending.defence_action]||pending.defence_action.toUpperCase());
+      battle.appendChild(action);
+      appendPublicBattleCards(battle,"DEFENCE CARDS",pending.defence_cards||[]);
+      if(target?.id===me.id){
+        const confirm=document.createElement("button");confirm.type="button";confirm.textContent=pending.defence_action==="accept"?"Confirm Elimination":"Confirm Defence";confirm.onclick=confirmStagedDefence;battle.appendChild(confirm);
+        const cancel=document.createElement("button");cancel.type="button";cancel.className="secondary";cancel.style.marginLeft="8px";cancel.textContent="Change Selection";cancel.onclick=cancelStagedDefence;battle.appendChild(cancel);
+      }else if(target?.is_bot && isRoomHost){
+        const waiting=document.createElement("div");waiting.className="game-note";waiting.textContent="The bot's chosen response is visible to everyone. It will be confirmed shortly.";battle.appendChild(waiting);
+        if(!botDefenceConfirmTimer && !botDefenceConfirmInProgress){
+          botDefenceConfirmTimer=setTimeout(async()=>{
+            botDefenceConfirmTimer=null;
+            botDefenceConfirmInProgress=true;
+            try{await confirmStagedDefence();}
+            finally{botDefenceConfirmInProgress=false;}
+          },4000);
+        }
+      }else{
+        const waiting=document.createElement("div");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to confirm this response.";battle.appendChild(waiting);
+      }
+    }else if(target?.id===me.id){
+      const chosen=[];
+      const choices=document.createElement("div");
+      cards.forEach(card=>{
+        const label=document.createElement("label");label.style.display="block";label.style.margin="7px 0";
+        const cb=document.createElement("input");cb.type="checkbox";cb.value=card.id;cb.style.width="auto";cb.style.margin="0 8px 0 0";
+        cb.onchange=()=>{if(cb.checked){if(!chosen.includes(card.id))chosen.push(card.id);}else{const i=chosen.indexOf(card.id);if(i>=0)chosen.splice(i,1);}};
+        label.append(cb,document.createTextNode(cardLabel(card)+" · "+cardDetails(card)));choices.appendChild(label);
+      });
+      battle.appendChild(choices);
+      const actions=document.createElement("div");actions.className="actions";
+      [["points","Stage 21+ point defence"],["silkworm","Stage Silkworm Shield"],["tsubaki","Stage Tsubaki Flower"],["bonsai","Stage Bonsai"]].forEach(([action,label])=>{
+        const b=document.createElement("button");b.type="button";b.textContent=label;b.onclick=()=>stageDefence(action,[...chosen]);actions.appendChild(b);
+      });
+      const accept=document.createElement("button");accept.type="button";accept.className="secondary";accept.style.marginTop="8px";accept.textContent="Stage Accept Elimination";accept.onclick=()=>stageDefence("accept",[]);battle.append(actions,accept);
+    }else if(target?.is_bot){
+      const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="The bot is choosing its defence cards...";battle.appendChild(waiting);
+      // Each player can dismiss this public preview independently.
+      const ok=document.createElement("button");ok.type="button";ok.textContent="OK";ok.style.marginTop="10px";
+      ok.onclick=()=>{dismissedPublicBattleKey=battleKey;root.innerHTML="";};
+      battle.appendChild(ok);
+      // Show the public attack window before asking the bot to respond.
+      root.appendChild(battle);
+      if(isRoomHost && !botAttackResponseInProgress){
+        botAttackResponseInProgress=true;
+        (async()=>{
+          try{
+            const {error:botError}=await db.rpc("run_bot_elimination_response",{p_room_id:currentRoom});
+            if(botError)throw botError;
+            specialActionsSignature="";
+            await refreshRoom();
+          }catch(e){
+            document.getElementById("gameStatus").textContent="Bot defence selection failed: "+e.message;
+          }finally{botAttackResponseInProgress=false;}
+        })();
+      }
+      return;
+    }else{
+      const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to choose defence cards.";battle.appendChild(waiting);
+    }
+    const ok=document.createElement("button");ok.type="button";ok.textContent="OK";ok.style.marginTop="10px";
+    ok.onclick=()=>{dismissedPublicBattleKey=battleKey;root.innerHTML="";};
+    battle.appendChild(ok);
+    root.appendChild(battle);
+    return;
+  }
+
+  if(cards.length && me.seat_number===currentTurnSeat && currentRound>=3){
+    const form=document.createElement("div");
+    const targetLabel=document.createElement("label");targetLabel.textContent="Target player";targetLabel.style.display="block";form.appendChild(targetLabel);
+    const targetSelect=document.createElement("select");targetSelect.id="attackTarget";
+    const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent="Choose an active opponent";placeholder.disabled=true;placeholder.selected=true;targetSelect.appendChild(placeholder);
+    players.filter(p=>p.id!==me.id).forEach(p=>{
+      const opt=document.createElement("option");opt.value=p.id;opt.textContent=p.player_name+(p.is_bot?" · BOT":"");targetSelect.appendChild(opt);
+    });
+    targetSelect.disabled=targetSelect.options.length===1;
+    form.appendChild(targetSelect);
+    const selected=document.createElement("div");selected.className="game-note";selected.textContent="Select cards in your hand below, then launch an attack.";form.appendChild(selected);
+    const choices=document.createElement("div");
+    cards.filter(card=>["season","weather"].includes(card.category) || ["sensei_man","sensei_woman","nure_onna"].includes(card.id)).forEach(card=>{
+      const label=document.createElement("label");label.style.display="block";label.style.margin="6px 0";
+      const cb=document.createElement("input");cb.type="checkbox";cb.style.width="auto";cb.style.margin="0 8px 0 0";
+      cb.checked=selectedAttackCardIds.includes(card.id);
+      cb.onchange=()=>{if(cb.checked){if(!selectedAttackCardIds.includes(card.id))selectedAttackCardIds.push(card.id);}else selectedAttackCardIds=selectedAttackCardIds.filter(id=>id!==card.id);};
+      label.append(cb,document.createTextNode(cardLabel(card)+" · "+cardDetails(card)));choices.appendChild(label);
+    });
+    form.appendChild(choices);
+    const launch=document.createElement("button");launch.type="button";launch.textContent="Launch elimination attack";launch.onclick=()=>launchEliminationAttack(targetSelect.value);form.appendChild(launch);
+    root.appendChild(form);
+  }
 }
+async function launchEliminationAttack(targetId){
+  if(!targetId||selectedAttackCardIds.length<2){document.getElementById("gameStatus").textContent="Choose a target and Season/Weather cards totaling at least 21 points.";return;}
+  const {data,error}=await db.rpc("play_elimination_attack",{p_room_id:currentRoom,p_card_ids:selectedAttackCardIds,p_target_player_id:targetId});
+  if(error){document.getElementById("gameStatus").textContent=error.message;return;}
+  selectedAttackCardIds=[];
+  document.getElementById("gameStatus").textContent="Attack launched. The targeted player must respond.";
+  await refreshRoom();
+}
+async function respondToAttack(action,cardIds){
+  const {data,error}=await db.rpc("respond_to_elimination",{p_room_id:currentRoom,p_action:action,p_defence_card_ids:cardIds});
+  if(error){document.getElementById("gameStatus").textContent=error.message;return;}
+  selectedDefenceCardIds=[];
+  document.getElementById("gameStatus").textContent=data.eliminated?"Player eliminated.":data.redirected?"Attack redirected.":"Attack defended.";
+  await refreshRoom();
+}
+
 function returnToLobby(){show("lobby");}
 
 async function startGame(){
