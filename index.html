@@ -38,6 +38,13 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 .pile-label{font:11px Arial;letter-spacing:2px;color:#c9a96a;margin-bottom:10px}
 .pile-card{margin:auto;width:88px;height:112px;border:2px solid #c6a66a;border-radius:7px;background:linear-gradient(145deg,#eee0bd,#cbb58c);color:#39291d;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:7px;box-shadow:0 5px 12px #0008;font: bold 13px Georgia;text-align:center;overflow:hidden}
 .pile-card.back{background:repeating-linear-gradient(45deg,#5a2028,#5a2028 7px,#32171d 7px,#32171d 14px);color:#e8d5a5}
+.open-stack{max-height:220px;overflow-y:auto;overflow-x:hidden;padding:3px 7px 8px;text-align:left;scrollbar-color:#8b6848 #21191a}
+.open-stack-card{height:48px;min-height:48px;margin-bottom:-13px;position:relative;border:1px solid #b89a65;border-radius:6px;background:linear-gradient(110deg,#f0e4c8,#cbb68d);color:#39291d;display:flex;align-items:center;gap:10px;padding:5px 9px;box-shadow:0 3px 7px #0008;font: bold 12px Georgia;overflow:hidden}
+.open-stack-card:last-child{margin-bottom:0}
+.open-stack-card .stack-number{flex:0 0 27px;height:27px;border:1px solid #8e7048;border-radius:4px;display:flex;align-items:center;justify-content:center;font:bold 16px Georgia;background:#e8d8b5}
+.open-stack-card .stack-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.open-stack-card.special{background:linear-gradient(110deg,#e4d1ad,#bda27a)}
+.open-stack-empty{font:12px Arial;color:#bcae9d;padding:12px;text-align:center}
 .opponents{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;margin:12px 0}
 .opponent{background:#292020;border:1px solid #5b4436;border-radius:8px;padding:10px;font:12px Arial}
 .opponent.active{border-color:#e2c071;box-shadow:0 0 0 1px #e2c07155}
@@ -125,7 +132,7 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div id="opponents" class="opponents"></div>
   <div class="game-board">
     <div class="pile"><div class="pile-label">DRAW DECK</div><div class="pile-card back">ŌSENSEI</div><div class="small" id="drawCount">Loading...</div></div>
-    <div class="pile"><div class="pile-label">OPEN PILE</div><div id="openTop" class="pile-card">EMPTY</div><div class="small" id="openCount">0 cards</div></div>
+    <div class="pile"><div class="pile-label">OPEN PILE</div><div id="openStack" class="open-stack"><div class="open-stack-empty">EMPTY</div></div><div class="small" id="openCount">0 cards</div></div>
   </div>
   <h2>Your Hand</h2>
   <div class="game-note">Your cards are private. Scroll sideways to view your full hand.</div>
@@ -339,8 +346,32 @@ async function showGameScreen(room,players){
   const pile=Array.isArray(state.open_pile)?state.open_pile:[];
   document.getElementById("drawCount").textContent=deck.length+" cards remaining";
   document.getElementById("openCount").textContent=pile.length+" cards";
-  const top=document.getElementById("openTop");
-  top.textContent=pile.length?cardLabel(pile[pile.length-1]):"EMPTY";
+  const openStack=document.getElementById("openStack");
+  openStack.innerHTML="";
+  if(!pile.length){
+    const empty=document.createElement("div");
+    empty.className="open-stack-empty";
+    empty.textContent="EMPTY";
+    openStack.appendChild(empty);
+  }else{
+    // The newest card sits on top; only each card's upper strip is exposed.
+    // This keeps the play pile readable without displaying full card faces.
+    [...pile].reverse().forEach(card=>{
+      const strip=document.createElement("div");
+      const isSpecial=!(card && (card.category==="season" || card.category==="weather"));
+      strip.className="open-stack-card"+(isSpecial?" special":"");
+      const number=document.createElement("span");
+      number.className="stack-number";
+      const value=card && typeof card==="object" ? (card.number??card.value) : null;
+      number.textContent=value!==undefined&&value!==null?String(value):(isSpecial?"✿":"—");
+      const name=document.createElement("span");
+      name.className="stack-name";
+      name.textContent=cardLabel(card);
+      strip.append(number,name);
+      openStack.appendChild(strip);
+    });
+    openStack.scrollTop=0;
+  }
   const hand=document.getElementById("myHand");
   hand.innerHTML="";
   if(handError){
