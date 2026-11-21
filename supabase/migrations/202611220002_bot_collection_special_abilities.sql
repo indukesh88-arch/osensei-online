@@ -41,6 +41,7 @@ DECLARE
   v_capacity integer;
   v_opponent_cards integer;
   v_target_count integer;
+  v_target record;
   v_target_id uuid;
   v_target_order integer;
   v_wrapped boolean := false;
