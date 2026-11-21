@@ -171,6 +171,7 @@ const db = window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 let currentUser=null;
 let currentRoom=null;
+let currentRoomPlayerId=null;
 let roomChannel=null;
 let roomPollTimer=null;
 let roomPollBusy=false;
@@ -341,6 +342,7 @@ async function showGameScreen(room,players){
     return;
   }
   const me=players.find(p=>p.user_id===currentUser?.id);
+  currentRoomPlayerId=me?.id||null;
   if(!me){
     document.getElementById("gameStatus").textContent="Your player seat could not be found in this room.";
     return;
@@ -461,7 +463,7 @@ async function showGameScreen(room,players){
   }
 }
 function myPlayerIdForAnimation(){
-  return window.currentRoomPlayerId||null;
+  return currentRoomPlayerId;
 }
 function showCardAnimationEvent(event){
   if(!event || !currentRoom)return;
