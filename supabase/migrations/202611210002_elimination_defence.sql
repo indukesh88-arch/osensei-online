@@ -124,15 +124,31 @@ BEGIN
     IF v_has_sensei_man OR v_has_sensei_woman THEN
       IF v_points < 14 THEN RAISE EXCEPTION 'Nure-Onna with Sensei requires at least 14 points.'; END IF;
       v_kind := CASE WHEN v_has_sensei_man THEN 'nure_sensei' ELSE 'nure_sensei' END;
-      SELECT turn_order INTO v_expected_target_order FROM public.room_players WHERE id=v_attacker.id;
-      v_expected_target_order := CASE
-        WHEN v_has_sensei_man THEN v_expected_target_order + 1
-        ELSE v_expected_target_order - 1
-      END;
-      SELECT id INTO v_target.id FROM public.room_players rp
-      LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
-      WHERE rp.room_id=p_room_id AND rp.turn_order=v_expected_target_order
-        AND COALESCE(gps.is_eliminated,false)=false;
+      IF v_has_sensei_man THEN
+        SELECT rp.id INTO v_target.id FROM public.room_players rp
+        LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+        WHERE rp.room_id=p_room_id AND rp.turn_order>v_attacker.turn_order
+          AND COALESCE(gps.is_eliminated,false)=false
+        ORDER BY rp.turn_order LIMIT 1;
+        IF v_target.id IS NULL THEN
+          SELECT rp.id INTO v_target.id FROM public.room_players rp
+          LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+          WHERE rp.room_id=p_room_id AND COALESCE(gps.is_eliminated,false)=false
+          ORDER BY rp.turn_order LIMIT 1;
+        END IF;
+      ELSE
+        SELECT rp.id INTO v_target.id FROM public.room_players rp
+        LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+        WHERE rp.room_id=p_room_id AND rp.turn_order<v_attacker.turn_order
+          AND COALESCE(gps.is_eliminated,false)=false
+        ORDER BY rp.turn_order DESC LIMIT 1;
+        IF v_target.id IS NULL THEN
+          SELECT rp.id INTO v_target.id FROM public.room_players rp
+          LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+          WHERE rp.room_id=p_room_id AND COALESCE(gps.is_eliminated,false)=false
+          ORDER BY rp.turn_order DESC LIMIT 1;
+        END IF;
+      END IF;
       IF v_target.id IS NULL OR v_target.id<>p_target_player_id THEN
         RAISE EXCEPTION 'Nure-Onna with Sensei must target the player indicated by the Sensei card.';
       END IF;
@@ -143,15 +159,31 @@ BEGIN
   ELSIF v_has_sensei_man OR v_has_sensei_woman THEN
     IF v_points < 14 THEN RAISE EXCEPTION 'Sensei attacks require at least 14 points.'; END IF;
     v_kind := CASE WHEN v_has_sensei_man THEN 'sensei_man' ELSE 'sensei_woman' END;
-    SELECT turn_order INTO v_expected_target_order FROM public.room_players WHERE id=v_attacker.id;
-    v_expected_target_order := CASE
-      WHEN v_has_sensei_man THEN v_expected_target_order + 1
-      ELSE v_expected_target_order - 1
-    END;
-    SELECT rp.id INTO v_target.id FROM public.room_players rp
-    LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
-    WHERE rp.room_id=p_room_id AND rp.turn_order=v_expected_target_order
-      AND COALESCE(gps.is_eliminated,false)=false;
+    IF v_has_sensei_man THEN
+      SELECT rp.id INTO v_target.id FROM public.room_players rp
+      LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+      WHERE rp.room_id=p_room_id AND rp.turn_order>v_attacker.turn_order
+        AND COALESCE(gps.is_eliminated,false)=false
+      ORDER BY rp.turn_order LIMIT 1;
+      IF v_target.id IS NULL THEN
+        SELECT rp.id INTO v_target.id FROM public.room_players rp
+        LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+        WHERE rp.room_id=p_room_id AND COALESCE(gps.is_eliminated,false)=false
+        ORDER BY rp.turn_order LIMIT 1;
+      END IF;
+    ELSE
+      SELECT rp.id INTO v_target.id FROM public.room_players rp
+      LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+      WHERE rp.room_id=p_room_id AND rp.turn_order<v_attacker.turn_order
+        AND COALESCE(gps.is_eliminated,false)=false
+      ORDER BY rp.turn_order DESC LIMIT 1;
+      IF v_target.id IS NULL THEN
+        SELECT rp.id INTO v_target.id FROM public.room_players rp
+        LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+        WHERE rp.room_id=p_room_id AND COALESCE(gps.is_eliminated,false)=false
+        ORDER BY rp.turn_order DESC LIMIT 1;
+      END IF;
+    END IF;
     IF v_target.id IS NULL OR v_target.id<>p_target_player_id THEN
       RAISE EXCEPTION 'Choose the player indicated by the Sensei card.';
     END IF;
