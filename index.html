@@ -155,6 +155,9 @@ let cardsForCurrentHand=[];
 let autoDrawInProgress=false;
 let selectedAttackCardIds=[];
 let selectedDefenceCardIds=[];
+let specialActionsSignature='';
+let specialActionsRequest=0;
+let botAttackResponseInProgress=false;
 
 function show(id){
   ["home","create","join","lobby","gameScreen"].forEach(x=>
@@ -435,57 +438,111 @@ async function playSelectedCard(){
     data.played_card+" played. "+data.cards_collected+" cards collected.";
 }
 
-function renderSpecialActions(players,me,cards,currentTurnSeat,currentRound){
+async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRound){
   const root=document.getElementById("specialActions");
+  const request=++specialActionsRequest;
+  const {data:pending,error}=await db.from("game_pending_attacks").select("*").eq("room_id",currentRoom).maybeSingle();
+  if(request!==specialActionsRequest || !root.isConnected)return;
+  if(error){
+    const signature="error:"+error.message;
+    if(signature===specialActionsSignature)return;
+    specialActionsSignature=signature;
+    root.innerHTML="";
+    const note=document.createElement("p");note.className="game-note";note.textContent="Attack status unavailable: "+error.message;root.appendChild(note);
+    return;
+  }
+
+  const signature=JSON.stringify([
+    currentRoom,me.id,currentTurnSeat,currentRound,
+    cards.map(card=>card.id),
+    pending?[
+      pending.attacker_player_id,pending.target_player_id,
+      pending.created_at,pending.attack_points,pending.attack_kind
+    ]:null
+  ]);
+  if(signature===specialActionsSignature){
+    if(pending){
+      const target=players.find(p=>p.id===pending.target_player_id);
+      if(target?.is_bot && currentUser?.id && !botAttackResponseInProgress){
+        botAttackResponseInProgress=true;
+        try{
+          const {error:botError}=await db.rpc("run_bot_elimination_response",{p_room_id:currentRoom});
+          if(botError)throw botError;
+          specialActionsSignature="";
+          await refreshRoom();
+        }catch(e){
+          document.getElementById("gameStatus").textContent="Bot defence failed: "+e.message;
+        }finally{botAttackResponseInProgress=false;}
+      }
+    }
+    return;
+  }
+  specialActionsSignature=signature;
   root.innerHTML="";
   const heading=document.createElement("h2");heading.textContent="Elimination & Defence";root.appendChild(heading);
   const hint=document.createElement("div");hint.className="game-note";hint.textContent="Attacks unlock in round 3. Select an Elimination card plus Season/Weather points; the targeted player must respond immediately.";root.appendChild(hint);
 
-  const pendingResultHolder={};
-  db.from("game_pending_attacks").select("*").eq("room_id",currentRoom).maybeSingle().then(({data,error})=>{
-    if(error){const e=document.createElement("p");e.className="game-note";e.textContent="Attack status unavailable: "+error.message;root.appendChild(e);return;}
-    if(data){
-      const target=players.find(p=>p.id===data.target_player_id);
-      const attacker=players.find(p=>p.id===data.attacker_player_id);
-      const note=document.createElement("p");note.textContent=(attacker?.player_name||"A player")+" attacked "+(target?.player_name||"a player")+" with "+data.attack_points+" points. "+(data.attack_kind==="nure_onna"||data.attack_kind==="nure_sensei"?"Nure-Onna can only be stopped by Silkworm Shield.":"Choose a valid defence or accept elimination.");root.appendChild(note);
-      if(target?.id===me.id){
-        const chosen=[];
-        cards.forEach(card=>{
-          const label=document.createElement("label");label.style.display="block";label.style.margin="7px 0";
-          const cb=document.createElement("input");cb.type="checkbox";cb.value=card.id;cb.style.width="auto";cb.style.margin="0 8px 0 0";
-          cb.onchange=()=>{if(cb.checked)chosen.push(card.id);else{const i=chosen.indexOf(card.id);if(i>=0)chosen.splice(i,1);}};
-          label.append(cb,document.createTextNode(cardLabel(card)+" · "+cardDetails(card)));root.appendChild(label);
-        });
-        const actions=document.createElement("div");actions.className="actions";
-        [["points","Defend with 21+ points"],["silkworm","Silkworm Shield"],["tsubaki","Tsubaki Flower"],["bonsai","Bonsai"]].forEach(([action,label])=>{
-          const b=document.createElement("button");b.type="button";b.textContent=label;b.onclick=()=>respondToAttack(action,chosen);actions.appendChild(b);
-        });
-        const accept=document.createElement("button");accept.type="button";accept.className="secondary";accept.textContent="Accept elimination";accept.onclick=()=>respondToAttack("accept",[]);root.append(actions,accept);
-      }else{
-        const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to respond.";root.appendChild(waiting);
-      }
-      return;
-    }
-    if(cards.length && me.seat_number===currentTurnSeat && currentRound>=3){
-      const form=document.createElement("div");
-      const targetLabel=document.createElement("label");targetLabel.textContent="Target player";targetLabel.style.display="block";form.appendChild(targetLabel);
-      const targetSelect=document.createElement("select");targetSelect.id="attackTarget";
-      players.filter(p=>p.id!==me.id && !p.is_bot).forEach(p=>{const opt=document.createElement("option");opt.value=p.id;opt.textContent=p.player_name;targetSelect.appendChild(opt);});
-      form.appendChild(targetSelect);
-      const selected=document.createElement("div");selected.className="game-note";selected.textContent="Select cards in your hand below, then launch an attack.";form.appendChild(selected);
-      const choices=document.createElement("div");
-      cards.filter(card=>["elimination","season","weather"].includes(card.category)).forEach(card=>{
-        const label=document.createElement("label");label.style.display="block";label.style.margin="6px 0";
-        const cb=document.createElement("input");cb.type="checkbox";cb.style.width="auto";cb.style.margin="0 8px 0 0";
-        cb.checked=selectedAttackCardIds.includes(card.id);
-        cb.onchange=()=>{if(cb.checked){if(!selectedAttackCardIds.includes(card.id))selectedAttackCardIds.push(card.id);}else selectedAttackCardIds=selectedAttackCardIds.filter(id=>id!==card.id);};
-        label.append(cb,document.createTextNode(cardLabel(card)+" · "+cardDetails(card)));choices.appendChild(label);
+  if(pending){
+    const target=players.find(p=>p.id===pending.target_player_id);
+    const attacker=players.find(p=>p.id===pending.attacker_player_id);
+    const note=document.createElement("p");
+    note.textContent=(attacker?.player_name||"A player")+" attacked "+(target?.player_name||"a player")+" with "+pending.attack_points+" points. "+(pending.attack_kind==="nure_onna"||pending.attack_kind==="nure_sensei"?"Nure-Onna can only be stopped by Silkworm Shield.":"Choose a valid defence or accept elimination.");
+    root.appendChild(note);
+    if(target?.id===me.id){
+      const chosen=[];
+      cards.forEach(card=>{
+        const label=document.createElement("label");label.style.display="block";label.style.margin="7px 0";
+        const cb=document.createElement("input");cb.type="checkbox";cb.value=card.id;cb.style.width="auto";cb.style.margin="0 8px 0 0";
+        cb.onchange=()=>{if(cb.checked)chosen.push(card.id);else{const i=chosen.indexOf(card.id);if(i>=0)chosen.splice(i,1);}};
+        label.append(cb,document.createTextNode(cardLabel(card)+" · "+cardDetails(card)));root.appendChild(label);
       });
-      form.appendChild(choices);
-      const launch=document.createElement("button");launch.type="button";launch.textContent="Launch elimination attack";launch.onclick=()=>launchEliminationAttack(targetSelect.value);form.appendChild(launch);
-      root.appendChild(form);
+      const actions=document.createElement("div");actions.className="actions";
+      [["points","Defend with 21+ points"],["silkworm","Silkworm Shield"],["tsubaki","Tsubaki Flower"],["bonsai","Bonsai"]].forEach(([action,label])=>{
+        const b=document.createElement("button");b.type="button";b.textContent=label;b.onclick=()=>respondToAttack(action,chosen);actions.appendChild(b);
+      });
+      const accept=document.createElement("button");accept.type="button";accept.className="secondary";accept.textContent="Accept elimination";accept.onclick=()=>respondToAttack("accept",[]);root.append(actions,accept);
+    }else if(target?.is_bot){
+      const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="The bot is choosing a defence...";root.appendChild(waiting);
+      if(currentUser?.id && !botAttackResponseInProgress){
+        botAttackResponseInProgress=true;
+        try{
+          const {error:botError}=await db.rpc("run_bot_elimination_response",{p_room_id:currentRoom});
+          if(botError)throw botError;
+          specialActionsSignature="";
+          await refreshRoom();
+        }catch(e){
+          document.getElementById("gameStatus").textContent="Bot defence failed: "+e.message;
+        }finally{botAttackResponseInProgress=false;}
+      }
+    }else{
+      const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to respond.";root.appendChild(waiting);
     }
-  });
+    return;
+  }
+
+  if(cards.length && me.seat_number===currentTurnSeat && currentRound>=3){
+    const form=document.createElement("div");
+    const targetLabel=document.createElement("label");targetLabel.textContent="Target player";targetLabel.style.display="block";form.appendChild(targetLabel);
+    const targetSelect=document.createElement("select");targetSelect.id="attackTarget";
+    const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent="Choose an active opponent";placeholder.disabled=true;placeholder.selected=true;targetSelect.appendChild(placeholder);
+    players.filter(p=>p.id!==me.id).forEach(p=>{
+      const opt=document.createElement("option");opt.value=p.id;opt.textContent=p.player_name+(p.is_bot?" · BOT":"");targetSelect.appendChild(opt);
+    });
+    targetSelect.disabled=targetSelect.options.length===1;
+    form.appendChild(targetSelect);
+    const selected=document.createElement("div");selected.className="game-note";selected.textContent="Select cards in your hand below, then launch an attack.";form.appendChild(selected);
+    const choices=document.createElement("div");
+    cards.filter(card=>["elimination","season","weather"].includes(card.category)).forEach(card=>{
+      const label=document.createElement("label");label.style.display="block";label.style.margin="6px 0";
+      const cb=document.createElement("input");cb.type="checkbox";cb.style.width="auto";cb.style.margin="0 8px 0 0";
+      cb.checked=selectedAttackCardIds.includes(card.id);
+      cb.onchange=()=>{if(cb.checked){if(!selectedAttackCardIds.includes(card.id))selectedAttackCardIds.push(card.id);}else selectedAttackCardIds=selectedAttackCardIds.filter(id=>id!==card.id);};
+      label.append(cb,document.createTextNode(cardLabel(card)+" · "+cardDetails(card)));choices.appendChild(label);
+    });
+    form.appendChild(choices);
+    const launch=document.createElement("button");launch.type="button";launch.textContent="Launch elimination attack";launch.onclick=()=>launchEliminationAttack(targetSelect.value);form.appendChild(launch);
+    root.appendChild(form);
+  }
 }
 async function launchEliminationAttack(targetId){
   if(!targetId||selectedAttackCardIds.length<2){document.getElementById("gameStatus").textContent="Choose a target and at least two attack cards.";return;}
