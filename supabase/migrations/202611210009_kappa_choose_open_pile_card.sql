@@ -4,7 +4,8 @@
 CREATE OR REPLACE FUNCTION public.play_kappa(
   p_room_id uuid,
   p_card_id text,
-  p_pile_index integer
+  p_pile_index integer,
+  p_selected_card jsonb
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -89,6 +90,10 @@ BEGIN
   FROM jsonb_array_elements(v_pile)
     WITH ORDINALITY AS e(value, ordinality)
   WHERE ordinality = p_pile_index + 1;
+
+  IF p_selected_card IS NULL OR v_collected IS DISTINCT FROM p_selected_card THEN
+    RAISE EXCEPTION 'The selected card changed. Please select it again.';
+  END IF;
 
   SELECT value
   INTO v_card
