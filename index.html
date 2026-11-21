@@ -1043,18 +1043,47 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     }else if(target?.id===me.id){
       const chosen=[];
       const choices=document.createElement("div");
+      const actions=document.createElement("div");actions.className="actions";
+      let stageButton=null;
+      const specialDefenceActions={
+        silkworm_shield:["silkworm","Stage Silkworm Shield"],
+        tsubaki_flower:["tsubaki","Stage Tsubaki Flower"],
+        bonsai:["bonsai","Stage Bonsai"]
+      };
+      const updateStageButton=()=>{
+        const selected=cards.filter(card=>chosen.includes(card.id));
+        const selectedSpecials=chosen.map(id=>specialDefenceActions[id]).filter(Boolean);
+        let nextAction=null;
+        if(selectedSpecials.length){
+          nextAction=selectedSpecials[selectedSpecials.length-1];
+        }else{
+          const points=selected.reduce((total,card)=>
+            total+(["season","weather"].includes(card.category)?Number(card.points)||0:0),0);
+          if(points>=21)nextAction=["points","Stage 21+ point defence"];
+        }
+        if(!nextAction){
+          if(stageButton){stageButton.remove();stageButton=null;}
+          return;
+        }
+        if(!stageButton){
+          stageButton=document.createElement("button");stageButton.type="button";actions.appendChild(stageButton);
+        }
+        stageButton.textContent=nextAction[1];
+        stageButton.onclick=()=>stageDefence(nextAction[0],[...chosen]);
+      };
       cards.forEach(card=>{
         const label=document.createElement("label");label.style.display="block";label.style.margin="7px 0";
         const cb=document.createElement("input");cb.type="checkbox";cb.value=card.id;cb.style.width="auto";cb.style.margin="0 8px 0 0";
-        cb.onchange=()=>{if(cb.checked){if(!chosen.includes(card.id))chosen.push(card.id);}else{const i=chosen.indexOf(card.id);if(i>=0)chosen.splice(i,1);}};
+        cb.onchange=()=>{
+          if(cb.checked){if(!chosen.includes(card.id))chosen.push(card.id);}
+          else{const i=chosen.indexOf(card.id);if(i>=0)chosen.splice(i,1);}
+          updateStageButton();
+        };
         label.append(cb,document.createTextNode(cardLabel(card)+" · "+cardDetails(card)));choices.appendChild(label);
       });
       battle.appendChild(choices);
-      const actions=document.createElement("div");actions.className="actions";
-      [["points","Stage 21+ point defence"],["silkworm","Stage Silkworm Shield"],["tsubaki","Stage Tsubaki Flower"],["bonsai","Stage Bonsai"]].forEach(([action,label])=>{
-        const b=document.createElement("button");b.type="button";b.textContent=label;b.onclick=()=>stageDefence(action,[...chosen]);actions.appendChild(b);
-      });
-      const accept=document.createElement("button");accept.type="button";accept.className="secondary";accept.style.marginTop="8px";accept.textContent="Stage Accept Elimination";accept.onclick=()=>stageDefence("accept",[]);battle.append(actions,accept);
+      const accept=document.createElement("button");accept.type="button";accept.className="secondary";accept.style.marginTop="8px";accept.textContent="Stage Accept Elimination";accept.onclick=()=>stageDefence("accept",[]);
+      battle.append(actions,accept);
     }else if(target?.is_bot){
       const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="The bot is choosing its defence cards...";battle.appendChild(waiting);
       // Each player can dismiss this public preview independently.
