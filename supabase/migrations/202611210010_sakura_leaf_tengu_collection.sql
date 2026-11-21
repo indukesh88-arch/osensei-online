@@ -60,6 +60,7 @@ DECLARE
   v_target_hand jsonb;
   v_target_new_hand jsonb;
   v_selected jsonb;
+  v_collected_cards jsonb:='[]'::jsonb;
   v_selection jsonb;
   v_target_ids uuid[];
   v_seen_ids uuid[] := ARRAY[]::uuid[];
@@ -145,6 +146,7 @@ BEGIN
       FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY e(value,ordinality)
       WHERE ordinality=v_index+1;
       v_new_hand:=v_new_hand||jsonb_build_array(v_selected);
+      v_collected_cards:=v_collected_cards||jsonb_build_array(v_selected);
 
       SELECT COALESCE(jsonb_agg(value ORDER BY ordinality),'[]'::jsonb)
       INTO v_target_new_hand
@@ -185,8 +187,11 @@ BEGIN
     updated_at=now()
   WHERE room_id=p_room_id;
 
+  UPDATE public.game_animation_events SET collected_cards=v_collected_cards,recipient_player_id=v_actor.id
+  WHERE id=(SELECT id FROM public.game_animation_events WHERE room_id=p_room_id AND actor_player_id=v_actor.id ORDER BY id DESC LIMIT 1);
+
   RETURN jsonb_build_object('success',true,'played_card',v_card->>'name',
-    'cards_collected',jsonb_array_length(p_selections),'next_seat',v_next_seat);
+    'cards_collected',jsonb_array_length(v_collected_cards),'next_seat',v_next_seat);
 END;
 $function$;
 
@@ -214,6 +219,7 @@ DECLARE
   v_pile jsonb;
   v_card jsonb;
   v_selected jsonb;
+  v_collected_cards jsonb:='[]'::jsonb;
   v_index integer;
   v_indices integer[]:=ARRAY[]::integer[];
   v_next_seat integer;
@@ -223,7 +229,7 @@ BEGIN
   IF p_card_id<>'tengu' OR jsonb_typeof(p_card_indices)<>'array' THEN
     RAISE EXCEPTION 'Invalid Tengu selection.';
   END IF;
-  IF jsonb_array_length(p_card_indices)<1 OR jsonb_array_length(p_card_indices)>2 THEN
+  IF jsonb_array_length(p_card_indices)>2 THEN
     RAISE EXCEPTION 'Choose up to two hidden cards.';
   END IF;
 
@@ -266,6 +272,7 @@ BEGIN
     SELECT value INTO v_selected FROM jsonb_array_elements(v_target_hand)
       WITH ORDINALITY e(value,ordinality) WHERE ordinality=v_index+1;
     v_new_hand:=COALESCE(v_new_hand,'[]'::jsonb)||jsonb_build_array(v_selected);
+    v_collected_cards:=v_collected_cards||jsonb_build_array(v_selected);
   END LOOP;
 
   SELECT COALESCE(jsonb_agg(value ORDER BY ordinality),'[]'::jsonb)
@@ -309,8 +316,11 @@ BEGIN
     updated_at=now()
   WHERE room_id=p_room_id;
 
+  UPDATE public.game_animation_events SET collected_cards=v_collected_cards,recipient_player_id=v_actor.id
+  WHERE id=(SELECT id FROM public.game_animation_events WHERE room_id=p_room_id AND actor_player_id=v_actor.id ORDER BY id DESC LIMIT 1);
+
   RETURN jsonb_build_object('success',true,'played_card',v_card->>'name',
-    'cards_collected',jsonb_array_length(p_card_indices),'next_seat',v_next_seat);
+    'cards_collected',jsonb_array_length(v_collected_cards),'next_seat',v_next_seat);
 END;
 $function$;
 
