@@ -72,7 +72,7 @@ DECLARE
   v_round integer;
   v_wrapped boolean := false;
 BEGIN
-  IF p_card_id <> 'sakura_leaf' OR jsonb_typeof(p_selections)<>'array' THEN
+  IF p_card_id IS DISTINCT FROM 'sakura_leaf' OR COALESCE(jsonb_typeof(p_selections),'')<>'array' THEN
     RAISE EXCEPTION 'Invalid Sakura Leaf selection.';
   END IF;
 
@@ -119,6 +119,7 @@ BEGIN
   FOR v_selection IN SELECT value FROM jsonb_array_elements(p_selections) LOOP
     v_target_id:=(v_selection->>'target_player_id')::uuid;
     v_index:=(v_selection->>'card_index')::integer;
+    IF v_target_id IS NULL THEN RAISE EXCEPTION 'Invalid opponent selection.'; END IF;
     IF v_target_id=ANY(v_seen_ids) THEN
       RAISE EXCEPTION 'Each opponent can be selected only once.';
     END IF;
@@ -226,7 +227,7 @@ DECLARE
   v_wrapped boolean:=false;
   v_expected_count integer;
 BEGIN
-  IF p_card_id<>'tengu' OR jsonb_typeof(p_card_indices)<>'array' THEN
+  IF p_card_id IS DISTINCT FROM 'tengu' OR COALESCE(jsonb_typeof(p_card_indices),'')<>'array' THEN
     RAISE EXCEPTION 'Invalid Tengu selection.';
   END IF;
   IF jsonb_array_length(p_card_indices)>2 THEN
