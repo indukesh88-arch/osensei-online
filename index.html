@@ -44,6 +44,8 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 .open-stack-card .stack-number{flex:0 0 27px;height:27px;border:1px solid #8e7048;border-radius:4px;display:flex;align-items:center;justify-content:center;font:bold 16px Georgia;background:#e8d8b5}
 .open-stack-card .stack-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .open-stack-card.special{background:linear-gradient(110deg,#e4d1ad,#bda27a)}
+ .open-stack-card.kappa-selectable{cursor:pointer}
+ .open-stack-card.kappa-selected{outline:3px solid #ffe08a;z-index:3;transform:translateX(3px)}
 .open-stack-empty{font:12px Arial;color:#bcae9d;padding:12px;text-align:center}
 #cardAnimationLayer{position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden}
 .animation-card{position:fixed;width:88px;height:122px;border:2px solid #c4a66b;border-radius:8px;background:linear-gradient(145deg,#f0e4c8,#cbb68d);color:#39291d;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:7px;box-shadow:0 8px 24px #000b;font:bold 12px Georgia;transform-style:preserve-3d;backface-visibility:hidden}
@@ -158,7 +160,8 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div id="myHand" class="hand"></div>
   <div id="gameStatus" class="status"></div>
   <div id="specialActions" class="panel" style="margin-top:14px;padding:14px"></div>
-  <button id="playCardBtn" onclick="playSelectedCard()" disabled>Play Selected Card</button>
+  <div id="kappaSelectionControls" class="panel hidden" style="margin:10px 0;padding:12px"><div id="kappaSelectionStatus" class="game-note">Choose one card from the Open Pile.</div><div class="actions"><button id="confirmKappaBtn" onclick="confirmKappaCollection()" disabled>Confirm Collection</button><button class="secondary" onclick="cancelKappaSelection()">Cancel Selection</button></div></div>
+   <button id="playCardBtn" onclick="playSelectedCard()" disabled>Play Selected Card</button>
   <button class="secondary" onclick="returnToLobby()">Back to Room</button>
 </section>
 
@@ -178,6 +181,8 @@ let roomPollTimer=null;
 let roomPollBusy=false;
 let botTurnInProgress=false;
 let selectedCardId=null;
+let selectedKappaPileIndex=null;
+let currentOpenPileCards=[];
 let cardsForCurrentHand=[];
 let autoDrawInProgress=false;
 let selectedAttackCardIds=[];
@@ -334,6 +339,7 @@ function cardDetails(card){
 }
 function cardAbility(card){
   if(card?.id==="moon_rabbit")return "Collect up to 3 cards from the Play Pile";
+  if(card?.id==="kappa")return "Collect any 1 card from the Open Pile";
   return "";
 }
 async function showGameScreen(room,players){
@@ -375,6 +381,7 @@ async function showGameScreen(room,players){
   });
   const deck=Array.isArray(state.draw_deck)?state.draw_deck:[];
   const pile=Array.isArray(state.open_pile)?state.open_pile:[];
+  currentOpenPileCards=pile;
   document.getElementById("drawCount").textContent=deck.length+" cards remaining";
   document.getElementById("openCount").textContent=pile.length+" cards";
   const openStack=document.getElementById("openStack");
@@ -387,10 +394,14 @@ async function showGameScreen(room,players){
   }else{
     // Render the pile in its stored order so the newest card appears at the top.
     // Only each card's upper strip is exposed.
-    pile.forEach(card=>{
-      const strip=document.createElement("div");
+    pile.forEach((card,index)=>{
+      const strip=document.createElement("button");
+      strip.type="button";
       const isSpecial=!(card && (card.category==="season" || card.category==="weather"));
-      strip.className="open-stack-card"+(isSpecial?" special":"");
+      const kappaMode=selectedCardId==="kappa";
+      strip.className="open-stack-card"+(isSpecial?" special":"")+(kappaMode?" kappa-selectable":"")+(selectedKappaPileIndex===index?" kappa-selected":"");
+      strip.disabled=!kappaMode || active?.id!==me.id;
+      strip.onclick=()=>selectKappaPileCard(index);
       const number=document.createElement("span");
       number.className="stack-number";
       const value=card && typeof card==="object" ? (card.number??card.value) : null;
@@ -440,7 +451,16 @@ async function showGameScreen(room,players){
   cardsForCurrentHand=cards;
   if(!cards.some(card=>card.id===selectedCardId))selectedCardId=null;
   const playButton=document.getElementById("playCardBtn");
-  playButton.disabled=active?.id!==me.id || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12","moon_rabbit"].includes(card.id)));
+  playButton.disabled=active?.id!==me.id || selectedCardId==="kappa" || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12","moon_rabbit"].includes(card.id)));
+  const kappaControls=document.getElementById("kappaSelectionControls");
+  const kappaStatus=document.getElementById("kappaSelectionStatus");
+  const confirmKappaBtn=document.getElementById("confirmKappaBtn");
+  const kappaSelected=selectedCardId==="kappa";
+  kappaControls.classList.toggle("hidden",!kappaSelected);
+  if(kappaSelected){
+    kappaStatus.textContent=selectedKappaPileIndex===null?"Select exactly one card in the Open Pile, then confirm.":"Selected: "+cardLabel(currentOpenPileCards[selectedKappaPileIndex])+". Press Confirm Collection to take it.";
+    confirmKappaBtn.disabled=active?.id!==me.id || selectedKappaPileIndex===null || !currentOpenPileCards[selectedKappaPileIndex];
+  }
   cards.forEach(card=>{
     const el=document.createElement("button");
     el.type="button";
@@ -547,7 +567,36 @@ function showCardAnimationEvent(event){
 }
 function selectHandCard(cardId){
   selectedCardId=cardId;
+  selectedKappaPileIndex=null;
   refreshRoom();
+}
+function selectKappaPileCard(index){
+  if(selectedCardId!=="kappa" || !Number.isInteger(index) || index<0 || index>=currentOpenPileCards.length)return;
+  selectedKappaPileIndex=index;
+  refreshRoom();
+}
+function cancelKappaSelection(){
+  selectedKappaPileIndex=null;
+  selectedCardId=null;
+  refreshRoom();
+}
+async function confirmKappaCollection(){
+  const btn=document.getElementById("confirmKappaBtn");
+  if(!currentRoom || selectedCardId!=="kappa" || selectedKappaPileIndex===null || btn.disabled)return;
+  btn.disabled=true;
+  document.getElementById("kappaSelectionStatus").textContent="Collecting selected card...";
+  const expectedCard=currentOpenPileCards[selectedKappaPileIndex];
+  if(!expectedCard){document.getElementById("gameStatus").textContent="That card is no longer available. Please select again.";btn.disabled=false;return;}
+  const {data,error}=await db.rpc("play_kappa",{p_room_id:currentRoom,p_card_id:"kappa",p_pile_index:selectedKappaPileIndex,p_selected_card:expectedCard});
+  if(error){
+    document.getElementById("gameStatus").textContent=error.message;
+    btn.disabled=false;
+    return;
+  }
+  selectedCardId=null;
+  selectedKappaPileIndex=null;
+  await refreshRoom();
+  document.getElementById("gameStatus").textContent="Kappa played. "+data.collected_card+" collected.";
 }
 async function playSelectedCard(){
   const btn=document.getElementById("playCardBtn");
