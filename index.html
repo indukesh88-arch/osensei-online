@@ -187,6 +187,7 @@ let botAttackResponseInProgress=false;
 let botDefenceConfirmTimer=null;
 let botDefenceConfirmInProgress=false;
 let dismissedPublicBattleKey='';
+let lastPublicBattleSnapshot=null;
 
 function show(id){
   ["home","create","join","lobby","gameScreen"].forEach(x=>
@@ -395,7 +396,8 @@ async function showGameScreen(room,players){
       strip.append(number,name);
       openStack.appendChild(strip);
     });
-    openStack.scrollTop=0;
+    // Keep the newest card visible at the bottom; scroll upward to inspect older cards.
+    openStack.scrollTop=openStack.scrollHeight;
   }
   const hand=document.getElementById("myHand");
   hand.innerHTML="";
@@ -508,7 +510,7 @@ function showCardAnimationEvent(event){
     {transform:"translate(0,28px) scale(.72) rotateY(180deg)",opacity:0},
     {transform:"translate(0,0) scale(1) rotateY(0deg)",opacity:1,offset:.72},
     {transform:"translate("+(endX-startX)+"px,"+(endY-startY)+"px) scale(.82) rotateY(0deg)",opacity:1}
-  ],{duration:950,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
+  ],{duration:1900,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
   const collected=Array.isArray(event.collected_cards)?event.collected_cards:[];
   if(collected.length){
     const target=event.recipient_player_id===myPlayerIdForAnimation()
@@ -525,11 +527,11 @@ function showCardAnimationEvent(event){
       animations.push(el.animate([
         {transform:"translate(0,0) scale(.88)",opacity:1},
         {transform:"translate("+(targetX-(pileRect.left+pileRect.width/2-44))+"px,"+(targetY-(pileRect.top+pileRect.height/2-61))+"px) scale(.62) rotate(-8deg)",opacity:0}
-      ],{duration:1250,delay:350+index*100,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
+      ],{duration:2100,delay:2000+index*650,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
     });
     if(target){
       target.classList.add("animation-recipient");
-      setTimeout(()=>target.classList.remove("animation-recipient"),1900);
+      setTimeout(()=>target.classList.remove("animation-recipient"),5200);
     }
     caption.textContent=(event.actor_name||"A player")+" played "+cardLabel(played)+" · "+collected.length+" card(s) collected";
   }
@@ -631,24 +633,37 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     return;
   }
 
-  const battleKey=pending?JSON.stringify([
-    currentRoom,pending.attacker_player_id,pending.target_player_id,
-    pending.created_at,pending.attack_points,pending.attack_kind,
-    pending.attack_cards
-  ]):'';
-  if(!pending)dismissedPublicBattleKey='';
-  if(pending && dismissedPublicBattleKey===battleKey){
+  let battleKey='';
+  if(pending){
+    battleKey=JSON.stringify([
+      currentRoom,pending.attacker_player_id,pending.target_player_id,
+      pending.created_at,pending.attack_points,pending.attack_kind,
+      pending.attack_cards
+    ]);
+    lastPublicBattleSnapshot={...pending,_battleKey:battleKey};
+  }
+  const displayBattle=pending || (
+    lastPublicBattleSnapshot &&
+    dismissedPublicBattleKey!==lastPublicBattleSnapshot._battleKey
+      ?lastPublicBattleSnapshot:null
+  );
+  battleKey=displayBattle?displayBattle._battleKey:'';
+  if(!displayBattle && lastPublicBattleSnapshot &&
+     dismissedPublicBattleKey===lastPublicBattleSnapshot._battleKey){
+    lastPublicBattleSnapshot=null;
+  }
+  if(displayBattle && dismissedPublicBattleKey===battleKey){
     root.innerHTML='';
     return;
   }
   const signature=JSON.stringify([
     currentRoom,me.id,currentTurnSeat,currentRound,
     cards.map(card=>card.id),
-    pending?[
-      pending.attacker_player_id,pending.target_player_id,
-      pending.created_at,pending.attack_points,pending.attack_kind,
-      pending.defence_action,pending.defence_card_ids,
-      pending.defence_cards
+    displayBattle?[
+      displayBattle.attacker_player_id,displayBattle.target_player_id,
+      displayBattle.created_at,displayBattle.attack_points,displayBattle.attack_kind,
+      displayBattle.defence_action,displayBattle.defence_card_ids,
+      displayBattle.defence_cards
     ]:null
   ]);
   if(signature===specialActionsSignature){
@@ -673,7 +688,28 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
   const heading=document.createElement("h2");heading.textContent="Elimination & Defence";root.appendChild(heading);
   const hint=document.createElement("div");hint.className="game-note";hint.textContent="Attacks unlock in round 3. Select Season/Weather cards totaling at least 21 points; Sensei and Nure-Onna are optional special cards.";root.appendChild(hint);
 
-  if(pending){
+  if(displayBattle){
+    if(!pending){
+      const attacker=players.find(p=>p.id===displayBattle.attacker_player_id);
+      const target=players.find(p=>p.id===displayBattle.target_player_id);
+      const battle=document.createElement("div");battle.className="public-battle";
+      const status=document.createElement("div");status.className="public-battle-status";
+      status.textContent="Elimination response completed: "+(attacker?.player_name||"A player")+" challenged "+(target?.player_name||"another player")+" with "+displayBattle.attack_points+" points.";
+      battle.appendChild(status);
+      appendPublicBattleCards(battle,"ATTACK CARDS",displayBattle.attack_cards||[]);
+      if(displayBattle.defence_action){
+        const actionNames={accept:"ACCEPTED ELIMINATION",points:"21+ POINT DEFENCE",silkworm:"SILKWORM SHIELD",tsubaki:"TSUBAKI FLOWER",bonsai:"BONSAI DEFENCE"};
+        const action=document.createElement("div");action.className="public-battle-status";
+        action.textContent=(target?.player_name||"Target")+" selected: "+(actionNames[displayBattle.defence_action]||displayBattle.defence_action.toUpperCase());
+        battle.appendChild(action);
+        appendPublicBattleCards(battle,"DEFENCE CARDS",displayBattle.defence_cards||[]);
+      }
+      const ok=document.createElement("button");ok.type="button";ok.textContent="OK";ok.style.marginTop="10px";
+      ok.onclick=()=>{dismissedPublicBattleKey=battleKey;lastPublicBattleSnapshot=null;specialActionsSignature="";root.innerHTML="";};
+      battle.appendChild(ok);
+      root.appendChild(battle);
+      return;
+    }
     const target=players.find(p=>p.id===pending.target_player_id);
     const attacker=players.find(p=>p.id===pending.attacker_player_id);
     const battle=document.createElement("div");battle.className="public-battle";
