@@ -56,6 +56,15 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 .hand-card .card-number{font:bold 28px Georgia}
 .hand-card .card-meta{font:10px Arial;letter-spacing:1px;text-transform:uppercase}
 .game-note{font:12px/1.5 Arial;color:#bcae9d}
+.public-battle{background:#151112;border:1px solid #a17a4b;border-radius:9px;padding:12px;margin:12px 0}
+.public-battle-title{font:bold 12px Arial;letter-spacing:1.5px;color:#e4c77f;margin:4px 0 8px}
+.public-battle-player{font:13px Arial;color:#eadcc6;margin:6px 0}
+.public-battle-cards{display:flex;flex-wrap:wrap;gap:7px;margin:7px 0 12px}
+.public-battle-card{min-width:92px;max-width:145px;flex:1 1 92px;background:linear-gradient(145deg,#f0e4c8,#cbb68d);color:#39291d;border:1px solid #b99a65;border-radius:6px;padding:8px 6px;text-align:center;box-shadow:0 3px 8px #0006}
+.public-battle-card strong{display:block;font:bold 12px Georgia}
+.public-battle-card span{display:block;font:10px/1.4 Arial;margin-top:4px}
+.public-battle-divider{height:1px;background:#624a38;margin:12px 0}
+.public-battle-status{font:12px/1.5 Arial;color:#e6cc91;margin:8px 0}
 @media(max-width:420px){.pile{min-height:135px}.hand-card{flex-basis:100px;min-height:145px}}
 </style>
 </head>
@@ -165,6 +174,8 @@ let selectedDefenceCardIds=[];
 let specialActionsSignature='';
 let specialActionsRequest=0;
 let botAttackResponseInProgress=false;
+let botDefenceConfirmTimer=null;
+let botDefenceConfirmInProgress=false;
 
 function show(id){
   ["home","create","join","lobby","gameScreen"].forEach(x=>
@@ -470,6 +481,55 @@ async function playSelectedCard(){
     data.played_card+" played. "+data.cards_collected+" cards collected.";
 }
 
+function appendPublicBattleCards(root,title,cards){
+  const heading=document.createElement("div");
+  heading.className="public-battle-title";
+  heading.textContent=title;
+  root.appendChild(heading);
+  const list=document.createElement("div");
+  list.className="public-battle-cards";
+  (Array.isArray(cards)?cards:[]).forEach(card=>{
+    const item=document.createElement("div");
+    item.className="public-battle-card";
+    const name=document.createElement("strong");
+    name.textContent=cardLabel(card);
+    const details=document.createElement("span");
+    details.textContent=cardDetails(card)||(card&&card.category?String(card.category).toUpperCase():"SPECIAL CARD");
+    item.append(name,details);
+    list.appendChild(item);
+  });
+  if(!list.children.length){
+    const empty=document.createElement("div");
+    empty.className="game-note";
+    empty.textContent="No cards selected.";
+    list.appendChild(empty);
+  }
+  root.appendChild(list);
+}
+async function stageDefence(action,cardIds){
+  const {error}=await db.rpc("stage_elimination_defence",{
+    p_room_id:currentRoom,p_action:action,p_defence_card_ids:cardIds
+  });
+  if(error){document.getElementById("gameStatus").textContent=error.message;return;}
+  specialActionsSignature="";
+  await refreshRoom();
+}
+async function confirmStagedDefence(){
+  if(!currentRoom)return;
+  const {data,error}=await db.rpc("confirm_elimination_defence",{p_room_id:currentRoom});
+  if(error){document.getElementById("gameStatus").textContent=error.message;return;}
+  specialActionsSignature="";
+  document.getElementById("gameStatus").textContent=data.eliminated
+    ?"Player eliminated. Their remaining hand was transferred to the attacker."
+    :data.redirected?"Attack redirected.":"Defence confirmed. Both players' played cards are now in the Play Pile.";
+  await refreshRoom();
+}
+async function cancelStagedDefence(){
+  const {error}=await db.rpc("cancel_staged_elimination_defence",{p_room_id:currentRoom});
+  if(error){document.getElementById("gameStatus").textContent=error.message;return;}
+  specialActionsSignature="";
+  await refreshRoom();
+}
 async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRound,isRoomHost){
   const root=document.getElementById("specialActions");
   const request=++specialActionsRequest;
@@ -489,11 +549,13 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     cards.map(card=>card.id),
     pending?[
       pending.attacker_player_id,pending.target_player_id,
-      pending.created_at,pending.attack_points,pending.attack_kind
+      pending.created_at,pending.attack_points,pending.attack_kind,
+      pending.defence_action,pending.defence_card_ids,
+      pending.defence_cards
     ]:null
   ]);
   if(signature===specialActionsSignature){
-    if(pending){
+    if(pending && !pending.defence_action){
       const target=players.find(p=>p.id===pending.target_player_id);
       if(target?.is_bot && isRoomHost && !botAttackResponseInProgress){
         botAttackResponseInProgress=true;
@@ -503,7 +565,7 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
           specialActionsSignature="";
           await refreshRoom();
         }catch(e){
-          document.getElementById("gameStatus").textContent="Bot defence failed: "+e.message;
+          document.getElementById("gameStatus").textContent="Bot defence selection failed: "+e.message;
         }finally{botAttackResponseInProgress=false;}
       }
     }
@@ -517,24 +579,52 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
   if(pending){
     const target=players.find(p=>p.id===pending.target_player_id);
     const attacker=players.find(p=>p.id===pending.attacker_player_id);
-    const note=document.createElement("p");
-    note.textContent=(attacker?.player_name||"A player")+" attacked "+(target?.player_name||"a player")+" with "+pending.attack_points+" points. "+(pending.attack_kind==="nure_onna"||pending.attack_kind==="nure_sensei"?"Nure-Onna can only be stopped by Silkworm Shield.":"Choose a valid defence or accept elimination.");
-    root.appendChild(note);
-    if(target?.id===me.id){
+    const battle=document.createElement("div");battle.className="public-battle";
+    const status=document.createElement("div");status.className="public-battle-status";
+    status.textContent=(attacker?.player_name||"A player")+" has challenged "+(target?.player_name||"another player")+" with "+pending.attack_points+" points.";
+    battle.appendChild(status);
+    appendPublicBattleCards(battle,"ATTACK CARDS",pending.attack_cards||[]);
+    const divider=document.createElement("div");divider.className="public-battle-divider";battle.appendChild(divider);
+
+    if(pending.defence_action){
+      const actionNames={accept:"ACCEPTED ELIMINATION",points:"21+ POINT DEFENCE",silkworm:"SILKWORM SHIELD",tsubaki:"TSUBAKI FLOWER",bonsai:"BONSAI DEFENCE"};
+      const action=document.createElement("div");action.className="public-battle-status";
+      action.textContent=(target?.player_name||"Target")+" selected: "+(actionNames[pending.defence_action]||pending.defence_action.toUpperCase());
+      battle.appendChild(action);
+      appendPublicBattleCards(battle,"DEFENCE CARDS",pending.defence_cards||[]);
+      if(target?.id===me.id){
+        const confirm=document.createElement("button");confirm.type="button";confirm.textContent=pending.defence_action==="accept"?"Confirm Elimination":"Confirm Defence";confirm.onclick=confirmStagedDefence;battle.appendChild(confirm);
+        const cancel=document.createElement("button");cancel.type="button";cancel.className="secondary";cancel.style.marginLeft="8px";cancel.textContent="Change Selection";cancel.onclick=cancelStagedDefence;battle.appendChild(cancel);
+      }else if(target?.is_bot && isRoomHost){
+        const waiting=document.createElement("div");waiting.className="game-note";waiting.textContent="The bot's chosen response is visible to everyone. It will be confirmed shortly.";battle.appendChild(waiting);
+        if(!botDefenceConfirmTimer && !botDefenceConfirmInProgress){
+          botDefenceConfirmTimer=setTimeout(async()=>{
+            botDefenceConfirmTimer=null;
+            botDefenceConfirmInProgress=true;
+            try{await confirmStagedDefence();}
+            finally{botDefenceConfirmInProgress=false;}
+          },2200);
+        }
+      }else{
+        const waiting=document.createElement("div");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to confirm this response.";battle.appendChild(waiting);
+      }
+    }else if(target?.id===me.id){
       const chosen=[];
+      const choices=document.createElement("div");
       cards.forEach(card=>{
         const label=document.createElement("label");label.style.display="block";label.style.margin="7px 0";
         const cb=document.createElement("input");cb.type="checkbox";cb.value=card.id;cb.style.width="auto";cb.style.margin="0 8px 0 0";
-        cb.onchange=()=>{if(cb.checked)chosen.push(card.id);else{const i=chosen.indexOf(card.id);if(i>=0)chosen.splice(i,1);}};
-        label.append(cb,document.createTextNode(cardLabel(card)+" · "+cardDetails(card)));root.appendChild(label);
+        cb.onchange=()=>{if(cb.checked){if(!chosen.includes(card.id))chosen.push(card.id);}else{const i=chosen.indexOf(card.id);if(i>=0)chosen.splice(i,1);}};
+        label.append(cb,document.createTextNode(cardLabel(card)+" · "+cardDetails(card)));choices.appendChild(label);
       });
+      battle.appendChild(choices);
       const actions=document.createElement("div");actions.className="actions";
-      [["points","Defend with 21+ points"],["silkworm","Silkworm Shield"],["tsubaki","Tsubaki Flower"],["bonsai","Bonsai"]].forEach(([action,label])=>{
-        const b=document.createElement("button");b.type="button";b.textContent=label;b.onclick=()=>respondToAttack(action,chosen);actions.appendChild(b);
+      [["points","Stage 21+ point defence"],["silkworm","Stage Silkworm Shield"],["tsubaki","Stage Tsubaki Flower"],["bonsai","Stage Bonsai"]].forEach(([action,label])=>{
+        const b=document.createElement("button");b.type="button";b.textContent=label;b.onclick=()=>stageDefence(action,[...chosen]);actions.appendChild(b);
       });
-      const accept=document.createElement("button");accept.type="button";accept.className="secondary";accept.textContent="Accept elimination";accept.onclick=()=>respondToAttack("accept",[]);root.append(actions,accept);
+      const accept=document.createElement("button");accept.type="button";accept.className="secondary";accept.style.marginTop="8px";accept.textContent="Stage Accept Elimination";accept.onclick=()=>stageDefence("accept",[]);battle.append(actions,accept);
     }else if(target?.is_bot){
-      const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="The bot is choosing a defence...";root.appendChild(waiting);
+      const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="The bot is choosing its defence cards...";battle.appendChild(waiting);
       if(isRoomHost && !botAttackResponseInProgress){
         botAttackResponseInProgress=true;
         try{
@@ -543,12 +633,13 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
           specialActionsSignature="";
           await refreshRoom();
         }catch(e){
-          document.getElementById("gameStatus").textContent="Bot defence failed: "+e.message;
+          document.getElementById("gameStatus").textContent="Bot defence selection failed: "+e.message;
         }finally{botAttackResponseInProgress=false;}
       }
     }else{
-      const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to respond.";root.appendChild(waiting);
+      const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to choose defence cards.";battle.appendChild(waiting);
     }
+    root.appendChild(battle);
     return;
   }
 
