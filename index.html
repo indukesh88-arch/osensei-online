@@ -407,6 +407,11 @@ function cardAbility(card){
 async function showGameScreen(room,players){
   const firstGameRender=document.getElementById("gameScreen").classList.contains("hidden");
   show("gameScreen");
+  // Keep the Play Card/action controls before the normal elimination panel
+  // in exactly the same order for every player's browser.
+  const actionArea=document.getElementById("gameCardActions");
+  const eliminationPanel=document.getElementById("specialActions");
+  if(actionArea && eliminationPanel) actionArea.after(eliminationPanel);
   if(firstGameRender)document.getElementById("gameStatus").textContent="Loading your cards...";
   const {data:state,error:stateError}=await db.from("game_states")
     .select("status,current_round,current_turn_seat,draw_deck,open_pile,turn_number")
@@ -908,7 +913,7 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
       displayBattle.defence_cards
     ]:null
   ]);
-  if(signature===specialActionsSignature){
+  if(signature===specialActionsSignature && root.childElementCount>0){
     if(pending && !pending.defence_action){
       const target=players.find(p=>p.id===pending.target_player_id);
       if(target?.is_bot && isRoomHost && !botAttackResponseInProgress){
@@ -1034,7 +1039,10 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     return;
   }
 
-  if(cards.length && me.seat_number===currentTurnSeat && currentRound>=3){
+  const isMyTurn = players.some(p =>
+    p.id===me.id && Number(p.seat_number)===Number(currentTurnSeat)
+  );
+  if(cards.length && isMyTurn && Number(currentRound)>=3){
     const form=document.createElement("div");
     const targetLabel=document.createElement("label");targetLabel.textContent="Target player";targetLabel.style.display="block";form.appendChild(targetLabel);
     const targetSelect=document.createElement("select");targetSelect.id="attackTarget";
