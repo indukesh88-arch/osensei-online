@@ -163,10 +163,10 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div class="game-note">Your cards are private. Scroll sideways to view your full hand.</div>
   <div id="myHand" class="hand"></div>
   <div id="gameStatus" class="status"></div>
+  <button id="playCardBtn" onclick="playSelectedCard()" disabled>Play Card</button>
   <div id="specialActions" class="panel" style="margin-top:14px;padding:14px"></div>
   <div id="kappaSelectionControls" class="panel hidden" style="margin:10px 0;padding:12px"><div id="kappaSelectionStatus" class="game-note">Choose one card from the Open Pile.</div><div class="actions"><button id="confirmKappaBtn" onclick="confirmKappaCollection()" disabled>Confirm Collection</button><button class="secondary" onclick="cancelKappaSelection()">Cancel Selection</button></div></div>
   <div id="collectSelectionControls" class="panel hidden" style="margin:10px 0;padding:12px"></div>
-   <button id="playCardBtn" onclick="playSelectedCard()" disabled>Play Selected Card</button>
   <button class="secondary" onclick="returnToLobby()">Back to Room</button>
 </section>
 
@@ -193,6 +193,7 @@ let sakuraSelections=[];
 let sakuraPendingIndex=null;
 let tenguTargetId=null;
 let tenguSelectedIndices=[];
+let collectSelectionStarted=false;
 let cardsForCurrentHand=[];
 let autoDrawInProgress=false;
 let selectedAttackCardIds=[];
@@ -344,7 +345,7 @@ function cardDetails(card){
   const number=card.number??card.value;
   if(season)bits.push(String(season));
   if(number!==undefined&&number!==null)bits.push("#"+number);
-  if(card.points!==undefined&&card.points!==null)bits.push(card.points+" pts");
+  if(["season","weather"].includes(card.category) && card.points!==undefined&&card.points!==null)bits.push(card.points+" pts");
   return bits.join(" · ");
 }
 function cardAbility(card){
@@ -352,6 +353,10 @@ function cardAbility(card){
   if(card?.id==="kappa")return "Collect any 1 card from the Open Pile";
   if(card?.id==="sakura_leaf")return "Choose 1 hidden card from every active opponent";
   if(card?.id==="tengu")return "Choose 2 hidden cards from 1 opponent";
+  if(card?.id==="bonsai")return "Defend with 7+ Season/Weather points or another special card";
+  if(card?.id==="tsubaki_flower")return "Redirect an attack to the next clockwise player";
+  if(card?.id==="silkworm_shield")return "Cancel any attack, including Nure-Onna";
+  if(card?.id==="nure_onna")return "Eliminate with 21+ points; Sensei adds directional attacks";
   return "";
 }
 async function showGameScreen(room,players){
@@ -463,7 +468,7 @@ async function showGameScreen(room,players){
   cardsForCurrentHand=cards;
   if(!cards.some(card=>card.id===selectedCardId))selectedCardId=null;
   const playButton=document.getElementById("playCardBtn");
-  playButton.disabled=active?.id!==me.id || ["kappa","sakura_leaf","tengu"].includes(selectedCardId) || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12","moon_rabbit"].includes(card.id)));
+  playButton.disabled=active?.id!==me.id || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12","moon_rabbit","sakura_leaf","tengu"].includes(card.id)));
   const kappaControls=document.getElementById("kappaSelectionControls");
   const kappaStatus=document.getElementById("kappaSelectionStatus");
   const confirmKappaBtn=document.getElementById("confirmKappaBtn");
@@ -483,7 +488,7 @@ async function showGameScreen(room,players){
     const title=document.createElement("div");title.className="card-title";title.textContent=cardLabel(card);
     const number=document.createElement("div");number.className="card-number";
     number.textContent=(typeof card==="object"&&card!==null&&(card.number??card.value)!==undefined)?String(card.number??card.value):"✿";
-    const meta=document.createElement("div");meta.className="card-meta";meta.textContent=cardDetails(card)||"SEASON CARD";
+    const meta=document.createElement("div");meta.className="card-meta";meta.textContent=cardDetails(card)||(card.category==="season"?"SEASON CARD":card.category==="weather"?"WEATHER CARD":"SPECIAL CARD");
     el.append(title,number,meta);
     const ability=cardAbility(card);
     if(ability){const rule=document.createElement("div");rule.className="card-ability";rule.textContent=ability;el.appendChild(rule);}
@@ -583,6 +588,7 @@ function selectHandCard(cardId){
   selectedKappaPileIndex=null;
   sakuraSelections=[];sakuraPendingIndex=null;
   tenguTargetId=null;tenguSelectedIndices=[];
+  collectSelectionStarted=false;
   refreshRoom();
 }
 function selectKappaPileCard(index){
@@ -616,13 +622,14 @@ async function confirmKappaCollection(){
 function cancelCollectSelection(){
   selectedCardId=null;sakuraSelections=[];sakuraPendingIndex=null;
   tenguTargetId=null;tenguSelectedIndices=[];collectOpponents=[];
+  collectSelectionStarted=false;
   refreshRoom();
 }
 async function renderCollectSelection(active,me){
   const root=document.getElementById("collectSelectionControls");
   const cardId=selectedCardId;
   root.innerHTML="";
-  const visible=["sakura_leaf","tengu"].includes(cardId);
+  const visible=["sakura_leaf","tengu"].includes(cardId) && collectSelectionStarted;
   root.classList.toggle("hidden",!visible);
   if(!visible)return;
   if(active?.id!==me.id){root.textContent="This collection can only be completed on your turn.";return;}
@@ -647,7 +654,7 @@ async function renderCollectSelection(active,me){
         confirm.disabled=true;status.textContent="Collecting the selected hidden cards...";
         const {data,error}=await db.rpc("play_sakura_leaf",{p_room_id:currentRoom,p_card_id:"sakura_leaf",p_selections:sakuraSelections});
         if(error){status.textContent=error.message;confirm.disabled=false;return;}
-        selectedCardId=null;sakuraSelections=[];sakuraPendingIndex=null;
+        selectedCardId=null;sakuraSelections=[];sakuraPendingIndex=null;collectSelectionStarted=false;
         await refreshRoom();document.getElementById("gameStatus").textContent="Sakura Leaf played. "+data.cards_collected+" hidden card(s) collected.";
       };
       return;
@@ -689,7 +696,7 @@ async function renderCollectSelection(active,me){
     confirm.disabled=true;status.textContent="Collecting your selected hidden cards...";
     const {data,error}=await db.rpc("play_tengu",{p_room_id:currentRoom,p_card_id:"tengu",p_target_player_id:tenguTargetId,p_card_indices:tenguSelectedIndices});
     if(error){status.textContent=error.message;confirm.disabled=false;return;}
-    selectedCardId=null;tenguTargetId=null;tenguSelectedIndices=[];
+    selectedCardId=null;tenguTargetId=null;tenguSelectedIndices=[];collectSelectionStarted=false;
     await refreshRoom();document.getElementById("gameStatus").textContent="Tengu played. "+data.cards_collected+" hidden card(s) collected.";
   };
 }
@@ -699,6 +706,12 @@ async function playSelectedCard(){
   btn.disabled=true;
   document.getElementById("gameStatus").textContent="Playing card...";
   const selected=cardsForCurrentHand.find(card=>card.id===selectedCardId);
+  if(["sakura_leaf","tengu"].includes(selectedCardId)){
+    collectSelectionStarted=true;
+    document.getElementById("gameStatus").textContent=selectedCardId==="sakura_leaf"?"Sakura Leaf played. Choose one hidden card from each opponent.":"Tengu played. Choose an opponent, then select up to two hidden cards.";
+    await refreshRoom();
+    return;
+  }
   const rpcName=selected?.category==="season"?"play_season_card":
     (selected?.id==="moon_rabbit"?"play_moon_rabbit":
     (["rain_9","rain_10"].includes(selected?.id)?"play_rain_card":
