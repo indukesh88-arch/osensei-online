@@ -677,7 +677,7 @@ async function runCardAnimationEvent(event){
       {transform:"translate(0,0) scale(.88)",opacity:1},
       {transform:"translate("+(targetX-sourceX)+"px,"+(targetY-sourceY)+"px) scale(.9)",opacity:1,offset:.82},
       {transform:"translate("+(targetX-sourceX)+"px,"+(targetY-sourceY)+"px) scale(.72)",opacity:0}
-    ],{duration:900,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}).finished.catch(()=>null);
+    ],{duration:1200,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}).finished.catch(()=>null);
     el.remove();
     await new Promise(resolve=>setTimeout(resolve,160));
   }
