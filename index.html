@@ -511,7 +511,7 @@ function showCardAnimationEvent(event){
   ],{duration:950,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
   const collected=Array.isArray(event.collected_cards)?event.collected_cards:[];
   if(collected.length){
-    const target=event.recipient_player_id===event.actor_player_id
+    const target=event.recipient_player_id===myPlayerIdForAnimation()
       ?document.getElementById("myHand")
       :document.querySelector('.opponent[data-player-id="'+event.recipient_player_id+'"]');
     const targetRect=target?target.getBoundingClientRect():pileRect;
