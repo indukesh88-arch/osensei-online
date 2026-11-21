@@ -82,7 +82,7 @@ BEGIN
   FROM public.room_players rp
   LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
   WHERE rp.room_id=p_room_id AND rp.id=p_target_player_id
-    AND rp.id<>v_attacker.id AND COALESCE(gps.is_eliminated,false)=false;
+    AND rp.id<>v_attacker.id AND NOT rp.is_bot AND COALESCE(gps.is_eliminated,false)=false;
   IF NOT FOUND THEN RAISE EXCEPTION 'Choose an active opponent.'; END IF;
 
   IF EXISTS (SELECT 1 FROM public.game_pending_attacks WHERE room_id=p_room_id) THEN
