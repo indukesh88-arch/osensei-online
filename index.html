@@ -63,6 +63,7 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 .hand-card .card-title{font:bold 13px Georgia}
 .hand-card .card-number{font:bold 28px Georgia}
 .hand-card .card-meta{font:10px Arial;letter-spacing:1px;text-transform:uppercase}
+.hand-card .card-ability{font:9px/1.2 Arial;text-transform:none;letter-spacing:0;border-top:1px solid #8e7656;padding-top:5px;margin-top:5px;width:100%;min-height:25px;display:flex;align-items:center;justify-content:center}
 .game-note{font:12px/1.5 Arial;color:#bcae9d}
 .public-battle{background:#151112;border:1px solid #a17a4b;border-radius:9px;padding:12px;margin:12px 0}
 .public-battle-title{font:bold 12px Arial;letter-spacing:1.5px;color:#e4c77f;margin:4px 0 8px}
@@ -331,6 +332,10 @@ function cardDetails(card){
   if(card.points!==undefined&&card.points!==null)bits.push(card.points+" pts");
   return bits.join(" · ");
 }
+function cardAbility(card){
+  if(card?.id==="moon_rabbit")return "Collect up to 3 cards from the Play Pile";
+  return "";
+}
 async function showGameScreen(room,players){
   const firstGameRender=document.getElementById("gameScreen").classList.contains("hidden");
   show("gameScreen");
@@ -435,7 +440,7 @@ async function showGameScreen(room,players){
   cardsForCurrentHand=cards;
   if(!cards.some(card=>card.id===selectedCardId))selectedCardId=null;
   const playButton=document.getElementById("playCardBtn");
-  playButton.disabled=active?.id!==me.id || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12"].includes(card.id)));
+  playButton.disabled=active?.id!==me.id || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12","moon_rabbit"].includes(card.id)));
   cards.forEach(card=>{
     const el=document.createElement("button");
     el.type="button";
@@ -446,7 +451,10 @@ async function showGameScreen(room,players){
     const number=document.createElement("div");number.className="card-number";
     number.textContent=(typeof card==="object"&&card!==null&&(card.number??card.value)!==undefined)?String(card.number??card.value):"✿";
     const meta=document.createElement("div");meta.className="card-meta";meta.textContent=cardDetails(card)||"SEASON CARD";
-    el.append(title,number,meta);hand.appendChild(el);
+    el.append(title,number,meta);
+    const ability=cardAbility(card);
+    if(ability){const rule=document.createElement("div");rule.className="card-ability";rule.textContent=ability;el.appendChild(rule);}
+    hand.appendChild(el);
   });
   document.getElementById("gameStatus").textContent="Your hand: "+cards.length+" cards.";
   renderSpecialActions(players,me,cards,state.current_turn_seat,state.current_round,room.host_id===currentUser?.id);
@@ -548,8 +556,9 @@ async function playSelectedCard(){
   document.getElementById("gameStatus").textContent="Playing card...";
   const selected=cardsForCurrentHand.find(card=>card.id===selectedCardId);
   const rpcName=selected?.category==="season"?"play_season_card":
+    (selected?.id==="moon_rabbit"?"play_moon_rabbit":
     (["rain_9","rain_10"].includes(selected?.id)?"play_rain_card":
-    (["typhoon_11","typhoon_12"].includes(selected?.id)?"play_typhoon_card":null));
+    (["typhoon_11","typhoon_12"].includes(selected?.id)?"play_typhoon_card":null)));
   if(!rpcName){
     document.getElementById("gameStatus").textContent="This card type is not playable yet.";
     btn.disabled=false;
