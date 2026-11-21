@@ -244,7 +244,7 @@ async function openRoom(id,code,max){
     try{await refreshRoom();}
     catch(e){message("gameStatus","Connection refresh failed: "+e.message);}
     finally{roomPollBusy=false;}
-  },1500);
+  },4000);
 }
 
 async function refreshRoom(){
@@ -301,8 +301,9 @@ function cardDetails(card){
   return bits.join(" · ");
 }
 async function showGameScreen(room,players){
+  const firstGameRender=document.getElementById("gameScreen").classList.contains("hidden");
   show("gameScreen");
-  document.getElementById("gameStatus").textContent="Loading your cards...";
+  if(firstGameRender)document.getElementById("gameStatus").textContent="Loading your cards...";
   const {data:state,error:stateError}=await db.from("game_states")
     .select("status,current_round,current_turn_seat,draw_deck,open_pile,turn_number")
     .eq("room_id",currentRoom).single();
