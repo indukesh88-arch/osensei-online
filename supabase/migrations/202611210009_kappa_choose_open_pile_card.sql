@@ -168,4 +168,4 @@ BEGIN
 END;
 $function$;
 
-GRANT EXECUTE ON FUNCTION public.play_kappa(uuid, text, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.play_kappa(uuid, text, integer, jsonb) TO authenticated;
