@@ -228,6 +228,7 @@ let botDefenceConfirmTimer=null;
 let botDefenceConfirmInProgress=false;
 let dismissedPublicBattleKey='';
 let lastPublicBattleSnapshot=null;
+let cardAnimationQueue=Promise.resolve();
 
 function show(id){
   ["home","create","join","lobby","gameScreen","victoryScreen"].forEach(x=>
@@ -594,22 +595,28 @@ function myPlayerIdForAnimation(){
 }
 function showCardAnimationEvent(event){
   if(!event || !currentRoom)return;
+  // Queue animation events so rapid plays never erase or overlap an animation
+  // that is already being shown on this player's screen.
+  cardAnimationQueue=cardAnimationQueue
+    .then(()=>runCardAnimationEvent(event))
+    .catch(error=>console.error("Card animation failed:",error));
+}
+async function runCardAnimationEvent(event){
   const layer=document.getElementById("cardAnimationLayer");
   const board=document.querySelector(".game-board");
   const pile=document.getElementById("openStack");
   if(!layer || !board || !pile)return;
   layer.innerHTML="";
-  const boardRect=board.getBoundingClientRect();
   const pileRect=pile.getBoundingClientRect();
   const actorArea=event.actor_player_id===myPlayerIdForAnimation()
     ?document.getElementById("myHand")
     :document.querySelector('.opponent[data-player-id="'+event.actor_player_id+'"]');
-  const actorRect=actorArea?actorArea.getBoundingClientRect():boardRect;
+  const actorRect=actorArea?actorArea.getBoundingClientRect():board.getBoundingClientRect();
   const startX=actorRect.left+actorRect.width/2-44;
   const startY=actorRect.top+actorRect.height/2-61;
-  const endX=pileRect.left+pileRect.width/2-44;
-  const endY=pileRect.top+pileRect.height/2-61;
-  const played=event.played_card||{name:"Typhoon",category:"weather"};
+  const pileX=pileRect.left+pileRect.width/2-44;
+  const pileY=pileRect.top+pileRect.height/2-61;
+  const played=event.played_card||{name:"Played card",category:"special"};
   const makeCard=(card)=>{
     const el=document.createElement("div");
     el.className="animation-card"+(card?.category==="hidden"?" hidden-card-back":"");
@@ -627,40 +634,56 @@ function showCardAnimationEvent(event){
   caption.className="animation-caption";
   caption.textContent=(event.actor_name||"A player")+" played "+cardLabel(played);
   layer.appendChild(caption);
+
+  // Stage 1: move the played card to the Open Pile.
   const playedEl=makeCard(played);
-  playedEl.style.left=startX+"px";playedEl.style.top=startY+"px";
+  playedEl.style.left=startX+"px";
+  playedEl.style.top=startY+"px";
   layer.appendChild(playedEl);
-  const animations=[];
-  animations.push(playedEl.animate([
-    {transform:"translate(0,28px) scale(.72) rotateY(180deg)",opacity:0},
-    {transform:"translate(0,0) scale(1) rotateY(0deg)",opacity:1,offset:.72},
-    {transform:"translate("+(endX-startX)+"px,"+(endY-startY)+"px) scale(.82) rotateY(0deg)",opacity:1}
-  ],{duration:1900,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
+  await playedEl.animate([
+    {transform:"translate(0,22px) scale(.72) rotateY(180deg)",opacity:0},
+    {transform:"translate(0,0) scale(1) rotateY(0deg)",opacity:1,offset:.28},
+    {transform:"translate("+(pileX-startX)+"px,"+(pileY-startY)+"px) scale(.82)",opacity:1}
+  ],{duration:1250,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}).finished.catch(()=>null);
+  playedEl.remove();
+
   const collected=Array.isArray(event.collected_cards)?event.collected_cards:[];
-  if(collected.length){
-    const target=event.recipient_player_id===myPlayerIdForAnimation()
-      ?document.getElementById("myHand")
-      :document.querySelector('.opponent[data-player-id="'+event.recipient_player_id+'"]');
-    const targetRect=target?target.getBoundingClientRect():pileRect;
-    const targetX=targetRect.left+targetRect.width/2-44;
-    const targetY=targetRect.top+targetRect.height/2-61;
-    collected.forEach((card,index)=>{
-      const el=makeCard(card);
-      el.style.left=(pileRect.left+pileRect.width/2-44+index*8)+"px";
-      el.style.top=(pileRect.top+pileRect.height/2-61-index*5)+"px";
-      layer.appendChild(el);
-      animations.push(el.animate([
-        {transform:"translate(0,0) scale(.88)",opacity:1},
-        {transform:"translate("+(targetX-(pileRect.left+pileRect.width/2-44))+"px,"+(targetY-(pileRect.top+pileRect.height/2-61))+"px) scale(.62) rotate(-8deg)",opacity:0}
-      ],{duration:2100,delay:2000+index*650,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}));
-    });
-    if(target){
-      target.classList.add("animation-recipient");
-      setTimeout(()=>target.classList.remove("animation-recipient"),5200);
-    }
-    caption.textContent=(event.actor_name||"A player")+" played "+cardLabel(played)+" · "+collected.length+" card(s) collected";
+  if(!collected.length){
+    await new Promise(resolve=>setTimeout(resolve,180));
+    layer.innerHTML="";
+    return;
   }
-  Promise.all(animations.map(a=>a.finished.catch(()=>null))).then(()=>{layer.innerHTML="";});
+
+  // Stage 2: collect cards one at a time. Never animate two cards through
+  // the same space simultaneously; keep each card opaque and visible.
+  const target=event.recipient_player_id===myPlayerIdForAnimation()
+    ?document.getElementById("myHand")
+    :document.querySelector('.opponent[data-player-id="'+event.recipient_player_id+'"]');
+  const targetRect=target?target.getBoundingClientRect():actorRect;
+  const targetX=targetRect.left+targetRect.width/2-44;
+  const targetY=targetRect.top+targetRect.height/2-61;
+  if(target)target.classList.add("animation-recipient");
+  caption.textContent=(event.actor_name||"A player")+" collected "+collected.length+" card(s)";
+  for(let index=0;index<collected.length;index++){
+    const card=collected[index];
+    const el=makeCard(card);
+    const sourceX=pileX+index*13;
+    const sourceY=pileY-index*8;
+    el.style.left=sourceX+"px";
+    el.style.top=sourceY+"px";
+    layer.appendChild(el);
+    caption.textContent="Collecting card "+(index+1)+" of "+collected.length;
+    await el.animate([
+      {transform:"translate(0,0) scale(.88)",opacity:1},
+      {transform:"translate("+(targetX-sourceX)+"px,"+(targetY-sourceY)+"px) scale(.9)",opacity:1,offset:.82},
+      {transform:"translate("+(targetX-sourceX)+"px,"+(targetY-sourceY)+"px) scale(.72)",opacity:0}
+    ],{duration:900,easing:"cubic-bezier(.2,.8,.2,1)",fill:"forwards"}).finished.catch(()=>null);
+    el.remove();
+    await new Promise(resolve=>setTimeout(resolve,160));
+  }
+  if(target)target.classList.remove("animation-recipient");
+  await new Promise(resolve=>setTimeout(resolve,220));
+  layer.innerHTML="";
 }
 function selectHandCard(cardId){
   selectedCardId=cardId;
