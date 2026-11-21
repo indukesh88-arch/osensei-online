@@ -657,7 +657,7 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     return;
   }
   const signature=JSON.stringify([
-    currentRoom,me.id,currentTurnSeat,currentRound,
+    currentRoom,me.id,currentTurnSeat,currentRound,Boolean(pending),
     cards.map(card=>card.id),
     displayBattle?[
       displayBattle.attacker_player_id,displayBattle.target_player_id,
