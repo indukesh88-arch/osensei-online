@@ -387,7 +387,7 @@ async function showGameScreen(room,players){
     el.append(title,number,meta);hand.appendChild(el);
   });
   document.getElementById("gameStatus").textContent="Your hand: "+cards.length+" cards.";
-  renderSpecialActions(players,me,cards);
+  renderSpecialActions(players,me,cards,state.current_turn_seat,state.current_round);
   if(active?.is_bot && room.host_id===currentUser?.id && !botTurnInProgress){
     botTurnInProgress=true;
     document.getElementById("gameStatus").textContent=active.player_name+" is thinking...";
@@ -435,7 +435,7 @@ async function playSelectedCard(){
     data.played_card+" played. "+data.cards_collected+" cards collected.";
 }
 
-function renderSpecialActions(players,me,cards){
+function renderSpecialActions(players,me,cards,currentTurnSeat,currentRound){
   const root=document.getElementById("specialActions");
   root.innerHTML="";
   const heading=document.createElement("h2");heading.textContent="Elimination & Defence";root.appendChild(heading);
@@ -466,11 +466,11 @@ function renderSpecialActions(players,me,cards){
       }
       return;
     }
-    if(cards.length && Number(document.getElementById("gameRound").textContent.replace("ROUND ",""))>=3){
+    if(cards.length && me.seat_number===currentTurnSeat && currentRound>=3){
       const form=document.createElement("div");
       const targetLabel=document.createElement("label");targetLabel.textContent="Target player";targetLabel.style.display="block";form.appendChild(targetLabel);
       const targetSelect=document.createElement("select");targetSelect.id="attackTarget";
-      players.filter(p=>p.id!==me.id).forEach(p=>{const opt=document.createElement("option");opt.value=p.id;opt.textContent=p.player_name;targetSelect.appendChild(opt);});
+      players.filter(p=>p.id!==me.id && !p.is_bot).forEach(p=>{const opt=document.createElement("option");opt.value=p.id;opt.textContent=p.player_name;targetSelect.appendChild(opt);});
       form.appendChild(targetSelect);
       const selected=document.createElement("div");selected.className="game-note";selected.textContent="Select cards in your hand below, then launch an attack.";form.appendChild(selected);
       const choices=document.createElement("div");
