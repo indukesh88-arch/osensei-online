@@ -188,7 +188,7 @@ BEGIN
     updated_at=now()
   WHERE room_id=p_room_id;
 
-  UPDATE public.game_animation_events SET collected_cards=v_collected_cards,recipient_player_id=v_actor.id
+  UPDATE public.game_animation_events SET collected_cards=COALESCE((SELECT jsonb_agg(jsonb_build_object('id','hidden_card','name','Hidden card','category','hidden') ORDER BY gs.n) FROM generate_series(1,jsonb_array_length(v_collected_cards)) AS gs(n)),'[]'::jsonb),recipient_player_id=v_actor.id
   WHERE id=(SELECT id FROM public.game_animation_events WHERE room_id=p_room_id AND actor_player_id=v_actor.id ORDER BY id DESC LIMIT 1);
 
   RETURN jsonb_build_object('success',true,'played_card',v_card->>'name',
@@ -317,7 +317,7 @@ BEGIN
     updated_at=now()
   WHERE room_id=p_room_id;
 
-  UPDATE public.game_animation_events SET collected_cards=v_collected_cards,recipient_player_id=v_actor.id
+  UPDATE public.game_animation_events SET collected_cards=COALESCE((SELECT jsonb_agg(jsonb_build_object('id','hidden_card','name','Hidden card','category','hidden') ORDER BY gs.n) FROM generate_series(1,jsonb_array_length(v_collected_cards)) AS gs(n)),'[]'::jsonb),recipient_player_id=v_actor.id
   WHERE id=(SELECT id FROM public.game_animation_events WHERE room_id=p_room_id AND actor_player_id=v_actor.id ORDER BY id DESC LIMIT 1);
 
   RETURN jsonb_build_object('success',true,'played_card',v_card->>'name',
