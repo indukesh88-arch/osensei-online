@@ -90,7 +90,7 @@ BEGIN
         v_collected_cards := v_collected_cards || jsonb_build_array(v_old_pile -> v_i);
       END LOOP;
     END IF;
-  ELSIF v_old_count > 0 AND NEW.draw_deck IS DISTINCT FROM OLD.draw_deck THEN
+  ELSIF v_new_count = 0 THEN
     -- Typhoon clears the Open Pile, collects its top two, and shuffles the
     -- remainder into the Draw Deck. Its face-up played card is represented
     -- explicitly for the shared animation.
