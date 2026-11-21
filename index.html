@@ -36,6 +36,7 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 
 /* Gameplay table */
 .game-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font:12px Arial;color:#d8c18b}
+.game-top .eliminated-status{color:#ff4d4d;font-weight:bold;letter-spacing:1.5px;text-shadow:0 0 8px #b51f1f66}
 .game-board{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}
 .pile{min-height:150px;background:#171213;border:1px solid #76563d;border-radius:10px;padding:12px;text-align:center}
 .pile-label{font:11px Arial;letter-spacing:2px;color:#c9a96a;margin-bottom:10px}
@@ -429,10 +430,22 @@ async function showGameScreen(room,players){
   const {data:handRow,error:handError}=await db.from("player_hands")
     .select("cards,last_draw_turn_number").eq("room_id",currentRoom).eq("room_player_id",me.id).single();
   document.getElementById("gameRound").textContent="ROUND "+state.current_round;
+  const {data:playerStates,error:playerStatesError}=await db.from("game_player_states")
+    .select("room_player_id,is_eliminated").eq("room_id",currentRoom);
+  if(playerStatesError){
+    document.getElementById("gameStatus").textContent="Could not load player elimination status: "+playerStatesError.message;
+    return;
+  }
+  const eliminatedPlayerIds=new Set((playerStates||[]).filter(s=>s.is_eliminated).map(s=>s.room_player_id));
+  const myPlayerEliminated=eliminatedPlayerIds.has(me.id);
+  const turnBox=document.getElementById("gameTurn");
+  turnBox.classList.toggle("eliminated-status",myPlayerEliminated);
   const active=players.find(p=>p.seat_number===state.current_turn_seat);
-  document.getElementById("gameTurn").textContent=active
-    ? (active.id===me.id?"YOUR TURN":" "+active.player_name.toUpperCase()+"'S TURN")
-    : "TURN NOT SET";
+  turnBox.textContent=myPlayerEliminated
+    ? "ELIMINATED"
+    : active
+      ? (active.id===me.id?"YOUR TURN":" "+active.player_name.toUpperCase()+"'S TURN")
+      : "TURN NOT SET";
   const opponents=document.getElementById("opponents");
   opponents.innerHTML="";
   players.forEach(p=>{
