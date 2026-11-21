@@ -366,9 +366,9 @@ async function showGameScreen(room,players){
     empty.textContent="EMPTY";
     openStack.appendChild(empty);
   }else{
-    // The newest card sits on top; only each card's upper strip is exposed.
-    // This keeps the play pile readable without displaying full card faces.
-    [...pile].reverse().forEach(card=>{
+    // Render the pile in its stored order so the newest card appears at the top.
+    // Only each card's upper strip is exposed.
+    pile.forEach(card=>{
       const strip=document.createElement("div");
       const isSpecial=!(card && (card.category==="season" || card.category==="weather"));
       strip.className="open-stack-card"+(isSpecial?" special":"");
