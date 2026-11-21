@@ -661,8 +661,6 @@ async function renderCollectSelection(active,me){
     confirm.onclick=()=>{
       if(target.hand_count>0 && sakuraPendingIndex===null)return;
       sakuraSelections.push({target_player_id:target.player_id,card_index:target.hand_count===0?null:sakuraPendingIndex});
-      // A zero-card opponent contributes no card; omit that target from the server transfer list.
-      if(target.hand_count===0)sakuraSelections.pop();
       sakuraPendingIndex=null;renderCollectSelection(active,me);
     };
     return;
