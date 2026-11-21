@@ -326,3 +326,79 @@ END;
 $function$;
 
 GRANT EXECUTE ON FUNCTION public.play_tengu(uuid,text,uuid,jsonb) TO authenticated;
+
+
+-- Detect collected Open Pile cards by exact card identity rather than a common
+-- array prefix. This also supports Kappa removing a card from the middle.
+CREATE OR REPLACE FUNCTION public.record_card_animation_event()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_actor_id uuid;
+  v_actor_name text;
+  v_old_pile jsonb:=COALESCE(OLD.open_pile,'[]'::jsonb);
+  v_new_pile jsonb:=COALESCE(NEW.open_pile,'[]'::jsonb);
+  v_old_count integer;
+  v_new_count integer;
+  v_i integer;
+  v_j integer;
+  v_found boolean;
+  v_played_card jsonb;
+  v_collected_cards jsonb:='[]'::jsonb;
+BEGIN
+  IF NEW.turn_number IS NOT DISTINCT FROM OLD.turn_number THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT rp.id,rp.player_name INTO v_actor_id,v_actor_name
+  FROM public.room_players rp
+  WHERE rp.room_id=NEW.room_id AND rp.seat_number=OLD.current_turn_seat
+  ORDER BY rp.is_bot
+  LIMIT 1;
+
+  IF v_actor_id IS NULL THEN RETURN NEW; END IF;
+
+  v_old_count:=jsonb_array_length(v_old_pile);
+  v_new_count:=jsonb_array_length(v_new_pile);
+
+  IF v_new_count>0 THEN
+    v_played_card:=v_new_pile->(v_new_count-1);
+    IF v_old_count>0 THEN
+      FOR v_i IN 0..(v_old_count-1) LOOP
+        v_found:=false;
+        IF v_new_count>0 THEN
+          FOR v_j IN 0..(v_new_count-1) LOOP
+            IF (v_old_pile->v_i)=(v_new_pile->v_j) THEN
+              v_found:=true;
+              EXIT;
+            END IF;
+          END LOOP;
+        END IF;
+        IF NOT v_found THEN
+          v_collected_cards:=v_collected_cards||jsonb_build_array(v_old_pile->v_i);
+        END IF;
+      END LOOP;
+    END IF;
+  ELSE
+    v_played_card:=jsonb_build_object('id','typhoon','name','Typhoon','category','weather');
+    IF v_old_count>0 THEN
+      FOR v_i IN GREATEST(0,v_old_count-2)..(v_old_count-1) LOOP
+        v_collected_cards:=v_collected_cards||jsonb_build_array(v_old_pile->v_i);
+      END LOOP;
+    END IF;
+  END IF;
+
+  INSERT INTO public.game_animation_events(
+    room_id,actor_player_id,recipient_player_id,actor_name,played_card,collected_cards
+  )
+  VALUES(
+    NEW.room_id,v_actor_id,v_actor_id,COALESCE(v_actor_name,'A player'),
+    v_played_card,v_collected_cards
+  );
+
+  RETURN NEW;
+END;
+$function$;
