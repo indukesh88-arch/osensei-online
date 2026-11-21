@@ -468,7 +468,7 @@ async function showGameScreen(room,players){
   cardsForCurrentHand=cards;
   if(!cards.some(card=>card.id===selectedCardId))selectedCardId=null;
   const playButton=document.getElementById("playCardBtn");
-  playButton.disabled=active?.id!==me.id || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12","moon_rabbit","sakura_leaf","tengu"].includes(card.id)));
+  playButton.disabled=active?.id!==me.id || (collectSelectionStarted && ["sakura_leaf","tengu"].includes(selectedCardId)) || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12","moon_rabbit","sakura_leaf","tengu"].includes(card.id)));
   const kappaControls=document.getElementById("kappaSelectionControls");
   const kappaStatus=document.getElementById("kappaSelectionStatus");
   const confirmKappaBtn=document.getElementById("confirmKappaBtn");
