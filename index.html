@@ -176,6 +176,7 @@ let specialActionsRequest=0;
 let botAttackResponseInProgress=false;
 let botDefenceConfirmTimer=null;
 let botDefenceConfirmInProgress=false;
+let dismissedPublicBattleKey='';
 
 function show(id){
   ["home","create","join","lobby","gameScreen"].forEach(x=>
@@ -544,6 +545,16 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     return;
   }
 
+  const battleKey=pending?JSON.stringify([
+    currentRoom,pending.attacker_player_id,pending.target_player_id,
+    pending.created_at,pending.attack_points,pending.attack_kind,
+    pending.attack_cards
+  ]):'';
+  if(!pending)dismissedPublicBattleKey='';
+  if(pending && dismissedPublicBattleKey===battleKey){
+    root.innerHTML='';
+    return;
+  }
   const signature=JSON.stringify([
     currentRoom,me.id,currentTurnSeat,currentRound,
     cards.map(card=>card.id),
@@ -625,6 +636,10 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
       const accept=document.createElement("button");accept.type="button";accept.className="secondary";accept.style.marginTop="8px";accept.textContent="Stage Accept Elimination";accept.onclick=()=>stageDefence("accept",[]);battle.append(actions,accept);
     }else if(target?.is_bot){
       const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="The bot is choosing its defence cards...";battle.appendChild(waiting);
+      // Each player can dismiss this public preview independently.
+      const ok=document.createElement("button");ok.type="button";ok.textContent="OK";ok.style.marginTop="10px";
+      ok.onclick=()=>{dismissedPublicBattleKey=battleKey;root.innerHTML="";};
+      battle.appendChild(ok);
       // Show the public attack window before asking the bot to respond.
       root.appendChild(battle);
       if(isRoomHost && !botAttackResponseInProgress){
@@ -644,6 +659,9 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     }else{
       const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="Waiting for "+(target?.player_name||"the targeted player")+" to choose defence cards.";battle.appendChild(waiting);
     }
+    const ok=document.createElement("button");ok.type="button";ok.textContent="OK";ok.style.marginTop="10px";
+    ok.onclick=()=>{dismissedPublicBattleKey=battleKey;root.innerHTML="";};
+    battle.appendChild(ok);
     root.appendChild(battle);
     return;
   }
