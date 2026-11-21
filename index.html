@@ -46,6 +46,9 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 .open-stack-card.special{background:linear-gradient(110deg,#e4d1ad,#bda27a)}
  .open-stack-card.kappa-selectable{cursor:pointer}
  .open-stack-card.kappa-selected{outline:3px solid #ffe08a;z-index:3;transform:translateX(3px)}
+.hidden-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:8px;margin:12px 0}
+.hidden-card-back{min-height:96px;border:2px solid #c6a66a;border-radius:7px;background:repeating-linear-gradient(45deg,#5a2028,#5a2028 7px,#32171d 7px,#32171d 14px);color:#f0dfb7;font:bold 12px Georgia;padding:8px}
+.hidden-card-back.chosen{outline:3px solid #ffe08a;background:repeating-linear-gradient(45deg,#76552a,#76552a 7px,#4c351e 7px,#4c351e 14px)}
 .open-stack-empty{font:12px Arial;color:#bcae9d;padding:12px;text-align:center}
 #cardAnimationLayer{position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden}
 .animation-card{position:fixed;width:88px;height:122px;border:2px solid #c4a66b;border-radius:8px;background:linear-gradient(145deg,#f0e4c8,#cbb68d);color:#39291d;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:7px;box-shadow:0 8px 24px #000b;font:bold 12px Georgia;transform-style:preserve-3d;backface-visibility:hidden}
@@ -161,6 +164,7 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div id="gameStatus" class="status"></div>
   <div id="specialActions" class="panel" style="margin-top:14px;padding:14px"></div>
   <div id="kappaSelectionControls" class="panel hidden" style="margin:10px 0;padding:12px"><div id="kappaSelectionStatus" class="game-note">Choose one card from the Open Pile.</div><div class="actions"><button id="confirmKappaBtn" onclick="confirmKappaCollection()" disabled>Confirm Collection</button><button class="secondary" onclick="cancelKappaSelection()">Cancel Selection</button></div></div>
+  <div id="collectSelectionControls" class="panel hidden" style="margin:10px 0;padding:12px"></div>
    <button id="playCardBtn" onclick="playSelectedCard()" disabled>Play Selected Card</button>
   <button class="secondary" onclick="returnToLobby()">Back to Room</button>
 </section>
@@ -183,6 +187,11 @@ let botTurnInProgress=false;
 let selectedCardId=null;
 let selectedKappaPileIndex=null;
 let currentOpenPileCards=[];
+let collectOpponents=[];
+let sakuraSelections=[];
+let sakuraPendingIndex=null;
+let tenguTargetId=null;
+let tenguSelectedIndices=[];
 let cardsForCurrentHand=[];
 let autoDrawInProgress=false;
 let selectedAttackCardIds=[];
@@ -340,6 +349,8 @@ function cardDetails(card){
 function cardAbility(card){
   if(card?.id==="moon_rabbit")return "Collect up to 3 cards from the Play Pile";
   if(card?.id==="kappa")return "Collect any 1 card from the Open Pile";
+  if(card?.id==="sakura_leaf")return "Choose 1 hidden card from every active opponent";
+  if(card?.id==="tengu")return "Choose 2 hidden cards from 1 opponent";
   return "";
 }
 async function showGameScreen(room,players){
@@ -451,7 +462,7 @@ async function showGameScreen(room,players){
   cardsForCurrentHand=cards;
   if(!cards.some(card=>card.id===selectedCardId))selectedCardId=null;
   const playButton=document.getElementById("playCardBtn");
-  playButton.disabled=active?.id!==me.id || selectedCardId==="kappa" || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12","moon_rabbit"].includes(card.id)));
+  playButton.disabled=active?.id!==me.id || ["kappa","sakura_leaf","tengu"].includes(selectedCardId) || !cards.some(card=>card.id===selectedCardId && (card.category==="season" || ["rain_9","rain_10","typhoon_11","typhoon_12","moon_rabbit"].includes(card.id)));
   const kappaControls=document.getElementById("kappaSelectionControls");
   const kappaStatus=document.getElementById("kappaSelectionStatus");
   const confirmKappaBtn=document.getElementById("confirmKappaBtn");
@@ -461,6 +472,7 @@ async function showGameScreen(room,players){
     kappaStatus.textContent=selectedKappaPileIndex===null?"Select exactly one card in the Open Pile, then confirm.":"Selected: "+cardLabel(currentOpenPileCards[selectedKappaPileIndex])+". Press Confirm Collection to take it.";
     confirmKappaBtn.disabled=active?.id!==me.id || selectedKappaPileIndex===null || !currentOpenPileCards[selectedKappaPileIndex];
   }
+  await renderCollectSelection(active,me);
   cards.forEach(card=>{
     const el=document.createElement("button");
     el.type="button";
@@ -568,6 +580,8 @@ function showCardAnimationEvent(event){
 function selectHandCard(cardId){
   selectedCardId=cardId;
   selectedKappaPileIndex=null;
+  sakuraSelections=[];sakuraPendingIndex=null;
+  tenguTargetId=null;tenguSelectedIndices=[];
   refreshRoom();
 }
 function selectKappaPileCard(index){
@@ -597,6 +611,88 @@ async function confirmKappaCollection(){
   selectedKappaPileIndex=null;
   await refreshRoom();
   document.getElementById("gameStatus").textContent="Kappa played. "+data.collected_card+" collected.";
+}
+function cancelCollectSelection(){
+  selectedCardId=null;sakuraSelections=[];sakuraPendingIndex=null;
+  tenguTargetId=null;tenguSelectedIndices=[];collectOpponents=[];
+  refreshRoom();
+}
+async function renderCollectSelection(active,me){
+  const root=document.getElementById("collectSelectionControls");
+  const cardId=selectedCardId;
+  root.innerHTML="";
+  const visible=["sakura_leaf","tengu"].includes(cardId);
+  root.classList.toggle("hidden",!visible);
+  if(!visible)return;
+  if(active?.id!==me.id){root.textContent="This collection can only be completed on your turn.";return;}
+  const {data,error}=await db.rpc("get_collect_opponents",{p_room_id:currentRoom});
+  if(error){root.textContent="Could not load opponents: "+error.message;return;}
+  collectOpponents=Array.isArray(data)?data:[];
+  const heading=document.createElement("h2");
+  heading.textContent=cardId==="sakura_leaf"?"Sakura Leaf · Hidden Selection":"Tengu · Choose an Opponent";
+  root.appendChild(heading);
+  const status=document.createElement("div");status.className="game-note";root.appendChild(status);
+  const choices=document.createElement("div");choices.className="hidden-card-grid";root.appendChild(choices);
+  const actions=document.createElement("div");actions.className="actions";root.appendChild(actions);
+  const confirm=document.createElement("button");confirm.type="button";confirm.disabled=true;actions.appendChild(confirm);
+  const cancel=document.createElement("button");cancel.type="button";cancel.className="secondary";cancel.textContent="Cancel Selection";cancel.onclick=cancelCollectSelection;actions.appendChild(cancel);
+
+  if(cardId==="sakura_leaf"){
+    const targetIndex=sakuraSelections.length;
+    if(targetIndex>=collectOpponents.length){
+      status.textContent="All active opponents have been selected. Confirm to complete Sakura Leaf.";
+      confirm.textContent="Complete Sakura Leaf";confirm.disabled=false;
+      confirm.onclick=async()=>{
+        confirm.disabled=true;status.textContent="Collecting the selected hidden cards...";
+        const {data,error}=await db.rpc("play_sakura_leaf",{p_room_id:currentRoom,p_card_id:"sakura_leaf",p_selections:sakuraSelections});
+        if(error){status.textContent=error.message;confirm.disabled=false;return;}
+        selectedCardId=null;sakuraSelections=[];sakuraPendingIndex=null;
+        await refreshRoom();document.getElementById("gameStatus").textContent="Sakura Leaf played. "+data.cards_collected+" hidden card(s) collected.";
+      };
+      return;
+    }
+    const target=collectOpponents[targetIndex];
+    status.textContent="Choose one face-down card from "+target.player_name+" ("+target.hand_count+" card(s)). This window shows no card faces. Opponent "+(targetIndex+1)+" of "+collectOpponents.length+".";
+    for(let i=0;i<target.hand_count;i++){
+      const b=document.createElement("button");b.type="button";b.className="hidden-card-back"+(sakuraPendingIndex===i?" chosen":"");b.textContent="ŌSENSEI\nHidden card "+(i+1);b.onclick=()=>{sakuraPendingIndex=i;renderCollectSelection(active,me);};choices.appendChild(b);
+    }
+    confirm.textContent=targetIndex===collectOpponents.length-1?"Confirm & Finish":"Confirm & Next Opponent";
+    confirm.disabled=target.hand_count>0 && sakuraPendingIndex===null;
+    confirm.onclick=()=>{
+      if(target.hand_count>0 && sakuraPendingIndex===null)return;
+      sakuraSelections.push({target_player_id:target.player_id,card_index:target.hand_count===0?null:sakuraPendingIndex});
+      // A zero-card opponent contributes no card; omit that target from the server transfer list.
+      if(target.hand_count===0)sakuraSelections.pop();
+      sakuraPendingIndex=null;renderCollectSelection(active,me);
+    };
+    return;
+  }
+
+  if(!tenguTargetId){
+    status.textContent="First choose which active opponent to target.";
+    collectOpponents.forEach(target=>{
+      const b=document.createElement("button");b.type="button";b.className="secondary";b.textContent=target.player_name+" · "+target.hand_count+" hidden card(s)";
+      b.onclick=()=>{tenguTargetId=target.player_id;tenguSelectedIndices=[];renderCollectSelection(active,me);};choices.appendChild(b);
+    });
+    confirm.textContent="Choose an opponent";confirm.disabled=true;return;
+  }
+  const target=collectOpponents.find(p=>p.player_id===tenguTargetId);
+  if(!target){status.textContent="That opponent is no longer active. Cancel and choose again.";return;}
+  const required=Math.min(2,target.hand_count);
+  status.textContent="Choose "+required+" face-down card(s) from "+target.player_name+". You cannot see their faces. You may change your choices before confirming.";
+  for(let i=0;i<target.hand_count;i++){
+    const b=document.createElement("button");b.type="button";b.className="hidden-card-back"+(tenguSelectedIndices.includes(i)?" chosen":"");b.textContent="ŌSENSEI\nHidden card "+(i+1);
+    b.onclick=()=>{tenguSelectedIndices=tenguSelectedIndices.includes(i)?tenguSelectedIndices.filter(x=>x!==i):[...tenguSelectedIndices,i];renderCollectSelection(active,me);};choices.appendChild(b);
+  }
+  confirm.textContent="Confirm Tengu Collection";confirm.disabled=tenguSelectedIndices.length!==required;
+  confirm.onclick=async()=>{
+    if(tenguSelectedIndices.length!==required)return;
+    confirm.disabled=true;status.textContent="Collecting your selected hidden cards...";
+    const {data,error}=await db.rpc("play_tengu",{p_room_id:currentRoom,p_card_id:"tengu",p_target_player_id:tenguTargetId,p_card_indices:tenguSelectedIndices});
+    if(error){status.textContent=error.message;confirm.disabled=false;return;}
+    selectedCardId=null;tenguTargetId=null;tenguSelectedIndices=[];
+    await refreshRoom();document.getElementById("gameStatus").textContent="Tengu played. "+data.cards_collected+" hidden card(s) collected.";
+  };
 }
 async function playSelectedCard(){
   const btn=document.getElementById("playCardBtn");
