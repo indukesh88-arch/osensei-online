@@ -481,7 +481,7 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
   specialActionsSignature=signature;
   root.innerHTML="";
   const heading=document.createElement("h2");heading.textContent="Elimination & Defence";root.appendChild(heading);
-  const hint=document.createElement("div");hint.className="game-note";hint.textContent="Attacks unlock in round 3. Select an Elimination card plus Season/Weather points; the targeted player must respond immediately.";root.appendChild(hint);
+  const hint=document.createElement("div");hint.className="game-note";hint.textContent="Attacks unlock in round 3. Select Season/Weather cards totaling at least 21 points; Sensei and Nure-Onna are optional special cards.";root.appendChild(hint);
 
   if(pending){
     const target=players.find(p=>p.id===pending.target_player_id);
@@ -533,7 +533,7 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     form.appendChild(targetSelect);
     const selected=document.createElement("div");selected.className="game-note";selected.textContent="Select cards in your hand below, then launch an attack.";form.appendChild(selected);
     const choices=document.createElement("div");
-    cards.filter(card=>["elimination","season","weather"].includes(card.category)).forEach(card=>{
+    cards.filter(card=>["season","weather"].includes(card.category) || ["sensei_man","sensei_woman","nure_onna"].includes(card.id)).forEach(card=>{
       const label=document.createElement("label");label.style.display="block";label.style.margin="6px 0";
       const cb=document.createElement("input");cb.type="checkbox";cb.style.width="auto";cb.style.margin="0 8px 0 0";
       cb.checked=selectedAttackCardIds.includes(card.id);
@@ -546,7 +546,7 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
   }
 }
 async function launchEliminationAttack(targetId){
-  if(!targetId||selectedAttackCardIds.length<2){document.getElementById("gameStatus").textContent="Choose a target and at least two attack cards.";return;}
+  if(!targetId||selectedAttackCardIds.length<2){document.getElementById("gameStatus").textContent="Choose a target and Season/Weather cards totaling at least 21 points.";return;}
   const {data,error}=await db.rpc("play_elimination_attack",{p_room_id:currentRoom,p_card_ids:selectedAttackCardIds,p_target_player_id:targetId});
   if(error){document.getElementById("gameStatus").textContent=error.message;return;}
   selectedAttackCardIds=[];
