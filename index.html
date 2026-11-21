@@ -628,14 +628,42 @@ function cancelCollectSelection(){
 async function renderCollectSelection(active,me){
   const root=document.getElementById("collectSelectionControls");
   const cardId=selectedCardId;
-  root.innerHTML="";
   const visible=["sakura_leaf","tengu"].includes(cardId) && collectSelectionStarted;
   root.classList.toggle("hidden",!visible);
-  if(!visible)return;
-  if(active?.id!==me.id){root.textContent="This collection can only be completed on your turn.";return;}
+  if(!visible){
+    root.innerHTML="";
+    root.dataset.collectSignature="";
+    return;
+  }
+  if(active?.id!==me.id){
+    const signature="not-your-turn:"+String(active?.id||"");
+    if(root.dataset.collectSignature!==signature){
+      root.innerHTML="";root.textContent="This collection can only be completed on your turn.";
+      root.dataset.collectSignature=signature;
+    }
+    return;
+  }
   const {data,error}=await db.rpc("get_collect_opponents",{p_room_id:currentRoom});
-  if(error){root.textContent="Could not load opponents: "+error.message;return;}
+  if(error){
+    const signature="error:"+error.message;
+    if(root.dataset.collectSignature!==signature){
+      root.innerHTML="";root.textContent="Could not load opponents: "+error.message;
+      root.dataset.collectSignature=signature;
+    }
+    return;
+  }
   collectOpponents=Array.isArray(data)?data:[];
+  const collectSignature=JSON.stringify([
+    cardId,
+    collectOpponents.map(p=>[p.player_id,p.hand_count]),
+    sakuraSelections,
+    sakuraPendingIndex,
+    tenguTargetId,
+    tenguSelectedIndices
+  ]);
+  if(root.dataset.collectSignature===collectSignature)return;
+  root.dataset.collectSignature=collectSignature;
+  root.innerHTML="";
   const heading=document.createElement("h2");
   heading.textContent=cardId==="sakura_leaf"?"Sakura Leaf · Hidden Selection":"Tengu · Choose an Opponent";
   root.appendChild(heading);
