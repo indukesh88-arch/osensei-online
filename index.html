@@ -460,6 +460,9 @@ async function showGameScreen(room,players){
     }
   }
 }
+function myPlayerIdForAnimation(){
+  return window.currentRoomPlayerId||null;
+}
 function showCardAnimationEvent(event){
   if(!event || !currentRoom)return;
   const layer=document.getElementById("cardAnimationLayer");
@@ -469,8 +472,12 @@ function showCardAnimationEvent(event){
   layer.innerHTML="";
   const boardRect=board.getBoundingClientRect();
   const pileRect=pile.getBoundingClientRect();
-  const startX=boardRect.left+boardRect.width/2-44;
-  const startY=boardRect.top+boardRect.height/2-61;
+  const actorArea=event.actor_player_id===myPlayerIdForAnimation()
+    ?document.getElementById("myHand")
+    :document.querySelector('.opponent[data-player-id="'+event.actor_player_id+'"]');
+  const actorRect=actorArea?actorArea.getBoundingClientRect():boardRect;
+  const startX=actorRect.left+actorRect.width/2-44;
+  const startY=actorRect.top+actorRect.height/2-61;
   const endX=pileRect.left+pileRect.width/2-44;
   const endY=pileRect.top+pileRect.height/2-61;
   const played=event.played_card||{name:"Typhoon",category:"weather"};
