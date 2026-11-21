@@ -585,7 +585,9 @@ async function confirmKappaCollection(){
   if(!currentRoom || selectedCardId!=="kappa" || selectedKappaPileIndex===null || btn.disabled)return;
   btn.disabled=true;
   document.getElementById("kappaSelectionStatus").textContent="Collecting selected card...";
-  const {data,error}=await db.rpc("play_kappa",{p_room_id:currentRoom,p_card_id:"kappa",p_pile_index:selectedKappaPileIndex});
+  const expectedCard=currentOpenPileCards[selectedKappaPileIndex];
+  if(!expectedCard){document.getElementById("gameStatus").textContent="That card is no longer available. Please select again.";btn.disabled=false;return;}
+  const {data,error}=await db.rpc("play_kappa",{p_room_id:currentRoom,p_card_id:"kappa",p_pile_index:selectedKappaPileIndex,p_selected_card:expectedCard});
   if(error){
     document.getElementById("gameStatus").textContent=error.message;
     btn.disabled=false;
