@@ -122,7 +122,7 @@ BEGIN
       RAISE EXCEPTION 'Each opponent can be selected only once.';
     END IF;
     v_seen_ids:=array_append(v_seen_ids,v_target_id);
-    IF NOT (v_target_id=ANY(v_target_ids)) OR v_index<0 THEN
+    IF NOT (v_target_id=ANY(v_target_ids)) OR (v_index IS NOT NULL AND v_index<0) THEN
       RAISE EXCEPTION 'Invalid opponent or hidden-card selection.';
     END IF;
 
@@ -131,19 +131,26 @@ BEGIN
     WHERE room_id=p_room_id AND room_player_id=v_target_id
     FOR UPDATE;
     v_target_hand:=COALESCE(v_target_hand,'[]'::jsonb);
-    IF v_index>=jsonb_array_length(v_target_hand) THEN
-      RAISE EXCEPTION 'An opponent hand changed. Please make your selections again.';
+
+    IF v_index IS NULL THEN
+      IF jsonb_array_length(v_target_hand)>0 THEN
+        RAISE EXCEPTION 'An opponent hand changed. Please make your selections again.';
+      END IF;
+      v_target_new_hand:=v_target_hand;
+    ELSE
+      IF v_index>=jsonb_array_length(v_target_hand) THEN
+        RAISE EXCEPTION 'An opponent hand changed. Please make your selections again.';
+      END IF;
+      SELECT value INTO v_selected
+      FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY e(value,ordinality)
+      WHERE ordinality=v_index+1;
+      v_new_hand:=v_new_hand||jsonb_build_array(v_selected);
+
+      SELECT COALESCE(jsonb_agg(value ORDER BY ordinality),'[]'::jsonb)
+      INTO v_target_new_hand
+      FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY e(value,ordinality)
+      WHERE ordinality<>v_index+1;
     END IF;
-
-    SELECT value INTO v_selected
-    FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY e(value,ordinality)
-    WHERE ordinality=v_index+1;
-    v_new_hand:=v_new_hand||jsonb_build_array(v_selected);
-
-    SELECT COALESCE(jsonb_agg(value ORDER BY ordinality),'[]'::jsonb)
-    INTO v_target_new_hand
-    FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY e(value,ordinality)
-    WHERE ordinality<>v_index+1;
 
     UPDATE public.player_hands SET cards=v_target_new_hand,updated_at=now()
     WHERE room_id=p_room_id AND room_player_id=v_target_id;
