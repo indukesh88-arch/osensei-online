@@ -390,7 +390,7 @@ async function showGameScreen(room,players){
     el.append(title,number,meta);hand.appendChild(el);
   });
   document.getElementById("gameStatus").textContent="Your hand: "+cards.length+" cards.";
-  renderSpecialActions(players,me,cards,state.current_turn_seat,state.current_round);
+  renderSpecialActions(players,me,cards,state.current_turn_seat,state.current_round,room.host_id===currentUser?.id);
   if(active?.is_bot && room.host_id===currentUser?.id && !botTurnInProgress){
     botTurnInProgress=true;
     document.getElementById("gameStatus").textContent=active.player_name+" is thinking...";
@@ -438,7 +438,7 @@ async function playSelectedCard(){
     data.played_card+" played. "+data.cards_collected+" cards collected.";
 }
 
-async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRound){
+async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRound,isRoomHost){
   const root=document.getElementById("specialActions");
   const request=++specialActionsRequest;
   const {data:pending,error}=await db.from("game_pending_attacks").select("*").eq("room_id",currentRoom).maybeSingle();
@@ -463,7 +463,7 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
   if(signature===specialActionsSignature){
     if(pending){
       const target=players.find(p=>p.id===pending.target_player_id);
-      if(target?.is_bot && currentUser?.id && !botAttackResponseInProgress){
+      if(target?.is_bot && isRoomHost && !botAttackResponseInProgress){
         botAttackResponseInProgress=true;
         try{
           const {error:botError}=await db.rpc("run_bot_elimination_response",{p_room_id:currentRoom});
@@ -503,7 +503,7 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
       const accept=document.createElement("button");accept.type="button";accept.className="secondary";accept.textContent="Accept elimination";accept.onclick=()=>respondToAttack("accept",[]);root.append(actions,accept);
     }else if(target?.is_bot){
       const waiting=document.createElement("p");waiting.className="game-note";waiting.textContent="The bot is choosing a defence...";root.appendChild(waiting);
-      if(currentUser?.id && !botAttackResponseInProgress){
+      if(isRoomHost && !botAttackResponseInProgress){
         botAttackResponseInProgress=true;
         try{
           const {error:botError}=await db.rpc("run_bot_elimination_response",{p_room_id:currentRoom});
