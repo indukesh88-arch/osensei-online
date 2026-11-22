@@ -971,7 +971,7 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     lastPublicBattleSnapshot=null;
   }
   // Notify the chosen human target once before showing the normal defence panel.
-  if(pending && pending.target_player_id===me.id && acknowledgedAttackNoticeKey!==battleKey){
+  if(pending && pending.attacker_player_id!==me.id && pending.target_player_id===me.id && acknowledgedAttackNoticeKey!==battleKey){
     const attacker=players.find(p=>p.id===pending.attacker_player_id);
     root.innerHTML="";
     const overlay=document.createElement("div");overlay.className="attack-notice";
