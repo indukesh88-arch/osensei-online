@@ -412,6 +412,8 @@ function cardDetails(card){
   return bits.join(" · ");
 }
 function cardAbility(card){
+  if(card?.id==="sensei_man")return "Attack the next active player clockwise with 14+ points";
+  if(card?.id==="sensei_woman")return "Attack the previous active player counterclockwise with 14+ points";
   if(card?.id==="moon_rabbit")return "Collect up to 3 cards from the Play Pile";
   if(card?.id==="kappa")return "Collect any 1 card from the Open Pile";
   if(card?.id==="sakura_leaf")return "Choose 1 hidden card from every active opponent";
