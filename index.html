@@ -477,7 +477,9 @@ async function showGameScreen(room,players){
     title.textContent=p.id===me.id?"YOU · "+p.player_name:p.player_name+(p.is_bot?" · BOT":"");
     const sub=document.createElement("div");
     sub.className="small";
-    sub.textContent=p.seat_number===state.current_turn_seat?"Current turn":"Seat "+p.seat_number;
+    const handCount=handCounts.get(p.id);
+    const handCountLabel=handCountError||handCount===undefined?"Cards: —":handCount+" cards";
+    sub.textContent=(p.seat_number===state.current_turn_seat?"Current turn":"Seat "+p.seat_number)+" · "+handCountLabel;
     el.append(title,sub);opponents.appendChild(el);
   });
   const deck=Array.isArray(state.draw_deck)?state.draw_deck:[];
