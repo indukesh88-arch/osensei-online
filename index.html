@@ -608,6 +608,13 @@ function showCardAnimationEvent(event){
     .catch(error=>console.error("Card animation failed:",error));
 }
 async function runCardAnimationEvent(event){
+  // A full-pile reshuffle is a deck operation, not a collection animation.
+  // Real collection effects in this game collect at most three visible cards;
+  // ignore oversized legacy/reshuffle events rather than flying the whole pile
+  // into the active player's hand.
+  if(Array.isArray(event?.collected_cards) && event.collected_cards.length>3){
+    return;
+  }
   const layer=document.getElementById("cardAnimationLayer");
   const board=document.querySelector(".game-board");
   const pile=document.getElementById("openStack");
