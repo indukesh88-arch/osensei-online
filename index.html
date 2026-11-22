@@ -81,6 +81,11 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
 .victory-subtitle{font:13px Arial;letter-spacing:2px;color:#cbb99e;text-transform:uppercase;margin:12px 0 26px}
 .winner-name{font:bold clamp(25px,7vw,40px) Georgia;color:#fff0c9;margin:18px 0 28px;overflow-wrap:anywhere}
 
+.attack-notice{position:fixed;inset:0;z-index:10000;background:#090708dd;display:flex;align-items:center;justify-content:center;padding:22px}
+.attack-notice-box{width:min(100%,390px);background:radial-gradient(ellipse at top,#482326,#171112 72%);border:1px solid #c5a263;border-radius:14px;padding:26px 20px;text-align:center;box-shadow:0 16px 48px #000c}
+.attack-notice-box h2{margin:0 0 14px;color:#f0d18b}
+.attack-notice-box p{font:15px/1.6 Arial;color:#f1e5d0}
+.attack-notice-box button{min-width:110px;margin-top:10px}
 .public-battle{background:#151112;border:1px solid #a17a4b;border-radius:9px;padding:12px;margin:12px 0}
 .public-battle-title{font:bold 12px Arial;letter-spacing:1.5px;color:#e4c77f;margin:4px 0 8px}
 .public-battle-player{font:13px Arial;color:#eadcc6;margin:6px 0}
@@ -227,6 +232,7 @@ let botAttackResponseInProgress=false;
 let botDefenceConfirmTimer=null;
 let botDefenceConfirmInProgress=false;
 let dismissedPublicBattleKey='';
+let acknowledgedAttackNoticeKey='';
 let lastPublicBattleSnapshot=null;
 let cardAnimationQueue=Promise.resolve();
 
@@ -963,6 +969,25 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
   if(!displayBattle && lastPublicBattleSnapshot &&
      dismissedPublicBattleKey===lastPublicBattleSnapshot._battleKey){
     lastPublicBattleSnapshot=null;
+  }
+  // Notify the chosen human target once before showing the normal defence panel.
+  if(pending && pending.target_player_id===me.id && acknowledgedAttackNoticeKey!==battleKey){
+    const attacker=players.find(p=>p.id===pending.attacker_player_id);
+    root.innerHTML="";
+    const overlay=document.createElement("div");overlay.className="attack-notice";
+    const box=document.createElement("div");box.className="attack-notice-box";
+    const title=document.createElement("h2");title.textContent="Elimination Challenge";
+    const message=document.createElement("p");
+    message.textContent=(attacker?.player_name||"Another player")+" has chosen you for elimination. Press OK to view the attack and respond.";
+    const ok=document.createElement("button");ok.type="button";ok.textContent="OK";
+    ok.onclick=async()=>{
+      acknowledgedAttackNoticeKey=battleKey;
+      specialActionsSignature="";
+      await refreshRoom();
+    };
+    box.append(title,message,ok);overlay.appendChild(box);root.appendChild(overlay);
+    specialActionsSignature=JSON.stringify(["attack-notice",battleKey,me.id]);
+    return;
   }
   // A pending attack must never be hidden for its current target.
   // Dismissal applies only to a completed/public battle preview.
