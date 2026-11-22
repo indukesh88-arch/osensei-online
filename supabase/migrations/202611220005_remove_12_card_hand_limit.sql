@@ -1,96 +1,100 @@
--- Remove the 12-card hand limit for every player, including bots.
--- Drawing, card collection, Sakura Leaf and Tengu may now increase hand size
--- without an artificial cap. Normal draw rules and card effects are unchanged.
+-- Remove the 12-card hand limit for humans and bots.
+-- This version edits deparsed PostgreSQL function definitions, so it does not
+-- depend on comments that pg_get_functiondef omits.
 
 DO $migration$
 DECLARE
   v_def text;
-  v_old text;
+  v_new text;
 BEGIN
-  -- Human turn draw: remove the full-hand skip and draw-count cap.
+  -- Human draw: remove the full-hand early return.
   SELECT pg_get_functiondef('public.draw_game_card(uuid)'::regprocedure) INTO v_def;
-  v_old := $old$  -- A full hand skips the draw, but the reshuffle above still happens before
-  -- the turn proceeds, and this turn is marked as processed.
-  IF jsonb_array_length(v_hand) >= 12 THEN
-    UPDATE public.player_hands
-      SET last_draw_turn_number = v_turn_number, updated_at = now()
-    WHERE room_id = p_room_id AND room_player_id = v_player_id;
-
-    UPDATE public.game_states
-      SET draw_deck = v_deck,
-          open_pile = v_open_pile,
-          updated_at = now()
-    WHERE room_id = p_room_id;
-
-    RETURN jsonb_build_object(
-      'success', true,
-      'cards_in_hand', jsonb_array_length(v_hand),
-      'cards_drawn', 0,
-      'cards_remaining', jsonb_array_length(v_deck),
-      'reshuffled', v_reshuffled
-    );
+  v_new := regexp_replace(
+    v_def,
+    'IF[[:space:]]+jsonb_array_length\(v_hand\)[[:space:]]*>=[[:space:]]*12[[:space:]]+THEN[\s\S]*?END IF;',
+    '',
+    'i'
+  );
+  IF v_new = v_def THEN
+    RAISE EXCEPTION 'Could not locate the human full-hand draw restriction in draw_game_card.';
   END IF;
+  v_def := v_new;
 
-$old$;
-  IF position(v_old IN v_def) = 0 THEN
-    RAISE EXCEPTION 'Could not locate the human full-hand draw restriction.';
+  v_new := regexp_replace(
+    v_def,
+    'v_draw_count[[:space:]]*:=[[:space:]]*LEAST\(v_draw_count,[[:space:]]*12[[:space:]]*-[[:space:]]*jsonb_array_length\(v_hand\)\);',
+    '',
+    'i'
+  );
+  IF v_new = v_def THEN
+    RAISE EXCEPTION 'Could not locate the human draw-count cap in draw_game_card.';
   END IF;
-  v_def := replace(v_def, v_old, '');
-  v_old := '  v_draw_count := LEAST(v_draw_count, 12 - jsonb_array_length(v_hand));';
-  IF position(v_old IN v_def) = 0 THEN RAISE EXCEPTION 'Could not locate human draw cap.'; END IF;
-  v_def := replace(v_def, v_old, '');
-  EXECUTE v_def;
+  EXECUTE v_new;
 
-  -- Bot turn: remove draw and collection capacity restrictions.
+  -- Bot draw and collection: remove draw cap and make collection capacity unlimited.
   SELECT pg_get_functiondef('public.run_bot_turn(uuid)'::regprocedure) INTO v_def;
-  v_old := '  v_draw_count := LEAST(v_draw_count, 12 - v_hand_count);';
-  IF position(v_old IN v_def) = 0 THEN RAISE EXCEPTION 'Could not locate bot draw cap.'; END IF;
-  v_def := replace(v_def, v_old, '');
-  v_old := $old$  IF v_hand_count < 12 THEN
-    FOR v_i IN 1..v_draw_count LOOP
+  v_new := regexp_replace(
+    v_def,
+    'v_draw_count[[:space:]]*:=[[:space:]]*LEAST\(v_draw_count,[[:space:]]*12[[:space:]]*-[[:space:]]*v_hand_count\);',
+    '',
+    'i'
+  );
+  IF v_new = v_def THEN
+    RAISE EXCEPTION 'Could not locate the bot draw-count cap in run_bot_turn.';
+  END IF;
+  v_def := v_new;
+
+  v_new := regexp_replace(
+    v_def,
+    'IF[[:space:]]+v_hand_count[[:space:]]*<[[:space:]]*12[[:space:]]+THEN[\s\S]*?END IF;',
+    'FOR v_i IN 1..v_draw_count LOOP
       EXIT WHEN jsonb_array_length(v_deck) = 0;
-      EXIT WHEN jsonb_array_length(v_hand) >= 12;
       v_card := v_deck -> 0;
       v_deck := v_deck - 0;
       v_hand := v_hand || jsonb_build_array(v_card);
-    END LOOP;
+    END LOOP;',
+    'i'
+  );
+  IF v_new = v_def THEN
+    RAISE EXCEPTION 'Could not locate the bot full-hand draw block in run_bot_turn.';
   END IF;
+  v_def := v_new;
 
-$old$;
-  IF position(v_old IN v_def) = 0 THEN RAISE EXCEPTION 'Could not locate bot draw limit block.'; END IF;
-  v_def := replace(v_def, v_old, $new$  FOR v_i IN 1..v_draw_count LOOP
-    EXIT WHEN jsonb_array_length(v_deck) = 0;
-    v_card := v_deck -> 0;
-    v_deck := v_deck - 0;
-    v_hand := v_hand || jsonb_build_array(v_card);
-  END LOOP;
+  v_new := regexp_replace(
+    v_def,
+    'v_capacity[[:space:]]*:=[[:space:]]*GREATEST\(0,[[:space:]]*13[[:space:]]*-[[:space:]]*v_hand_count\);',
+    'v_capacity := 2147483647;',
+    'i'
+  );
+  IF v_new = v_def THEN
+    RAISE EXCEPTION 'Could not locate the bot collection capacity in run_bot_turn.';
+  END IF;
+  EXECUTE v_new;
 
-$new$);
-  v_old := '  v_capacity := GREATEST(0, 13 - v_hand_count);';
-  IF position(v_old IN v_def) = 0 THEN RAISE EXCEPTION 'Could not locate bot collection capacity.'; END IF;
-  v_def := replace(v_def, v_old, '  v_capacity := 2147483647;');
-  EXECUTE v_def;
-
-  -- Human Sakura Leaf: allow collecting every opponent's selected card.
+  -- Sakura Leaf: remove its human hand-size rejection.
   SELECT pg_get_functiondef('public.play_sakura_leaf(uuid,text,jsonb)'::regprocedure) INTO v_def;
-  v_old := $old$  IF jsonb_array_length(v_new_hand)>12 THEN
-    RAISE EXCEPTION 'Sakura Leaf would exceed your 12-card hand limit.';
+  v_new := regexp_replace(
+    v_def,
+    'IF[[:space:]]+jsonb_array_length\(v_new_hand\)[[:space:]]*>[[:space:]]*12[[:space:]]+THEN[\s\S]*?END IF;',
+    '',
+    'i'
+  );
+  IF v_new = v_def THEN
+    RAISE EXCEPTION 'Could not locate Sakura Leaf hand limit.';
   END IF;
+  EXECUTE v_new;
 
-$old$;
-  IF position(v_old IN v_def) = 0 THEN RAISE EXCEPTION 'Could not locate Sakura Leaf hand limit.'; END IF;
-  v_def := replace(v_def, v_old, '');
-  EXECUTE v_def;
-
-  -- Human Tengu: allow both selected cards regardless of current hand size.
+  -- Tengu: remove its human hand-size rejection.
   SELECT pg_get_functiondef('public.play_tengu(uuid,text,uuid,jsonb)'::regprocedure) INTO v_def;
-  v_old := $old$  IF jsonb_array_length(v_hand)>12 THEN
-    RAISE EXCEPTION 'Tengu would exceed your 12-card hand limit.';
+  v_new := regexp_replace(
+    v_def,
+    'IF[[:space:]]+jsonb_array_length\(v_hand\)[[:space:]]*>[[:space:]]*12[[:space:]]+THEN[\s\S]*?END IF;',
+    '',
+    'i'
+  );
+  IF v_new = v_def THEN
+    RAISE EXCEPTION 'Could not locate Tengu hand limit.';
   END IF;
-
-$old$;
-  IF position(v_old IN v_def) = 0 THEN RAISE EXCEPTION 'Could not locate Tengu hand limit.'; END IF;
-  v_def := replace(v_def, v_old, '');
-  EXECUTE v_def;
+  EXECUTE v_new;
 END;
 $migration$;
