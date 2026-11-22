@@ -455,13 +455,17 @@ async function showGameScreen(room,players){
   }
   const eliminatedPlayerIds=new Set((playerStates||[]).filter(s=>s.is_eliminated).map(s=>s.room_player_id));
   const myPlayerEliminated=eliminatedPlayerIds.has(me.id);
+  const {data:handCountRows,error:handCountError}=await db.rpc("get_room_hand_counts",{p_room_id:currentRoom});
+  const handCounts=new Map((handCountRows||[]).map(row=>[row.player_id,Number(row.hand_count)]));
   const turnBox=document.getElementById("gameTurn");
   turnBox.classList.toggle("eliminated-status",myPlayerEliminated);
   const active=players.find(p=>p.seat_number===state.current_turn_seat);
+  const activeHandCount=active?handCounts.get(active.id):undefined;
   turnBox.textContent=myPlayerEliminated
     ? "ELIMINATED"
     : active
-      ? (active.id===me.id?"YOUR TURN":" "+active.player_name.toUpperCase()+"'S TURN")
+      ? (active.id===me.id?"YOUR TURN":active.player_name.toUpperCase()+"'S TURN")
+        +" · "+(handCountError||activeHandCount===undefined?"—":activeHandCount)+" CARDS"
       : "TURN NOT SET";
   const opponents=document.getElementById("opponents");
   opponents.innerHTML="";
