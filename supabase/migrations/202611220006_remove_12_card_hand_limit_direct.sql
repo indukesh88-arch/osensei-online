@@ -106,6 +106,7 @@ BEGIN
     'cards_remaining', jsonb_array_length(v_deck)
   );
 END;
+$function$;
 
 CREATE OR REPLACE FUNCTION public.run_bot_turn(p_room_id uuid)
 RETURNS jsonb
@@ -562,6 +563,7 @@ BEGIN
     'next_seat', v_next_seat
   );
 END;
+$function$;
 
 CREATE OR REPLACE FUNCTION public.play_sakura_leaf(
   p_room_id uuid,
@@ -714,6 +716,7 @@ BEGIN
   RETURN jsonb_build_object('success',true,'played_card',v_card->>'name',
     'cards_collected',jsonb_array_length(v_collected_cards),'next_seat',v_next_seat);
 END;
+$function$;
 
 CREATE OR REPLACE FUNCTION public.play_tengu(
   p_room_id uuid,
@@ -836,3 +839,4 @@ BEGIN
   RETURN jsonb_build_object('success',true,'played_card',v_card->>'name',
     'cards_collected',jsonb_array_length(v_collected_cards),'next_seat',v_next_seat);
 END;
+$function$;
