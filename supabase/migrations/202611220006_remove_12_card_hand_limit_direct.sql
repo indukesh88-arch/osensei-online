@@ -1,0 +1,838 @@
+-- Remove the 12-card hand limit by replacing the affected RPC functions directly.
+-- No pg_get_functiondef text matching is used.
+
+CREATE OR REPLACE FUNCTION public.draw_game_card(p_room_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_player_id uuid;
+  v_player_seat integer;
+  v_turn_seat integer;
+  v_turn_number integer;
+  v_deck jsonb;
+  v_open_pile jsonb;
+  v_hand jsonb;
+  v_last_draw integer;
+  v_draw_count integer;
+  v_drawn integer := 0;
+  v_card jsonb;
+BEGIN
+  SELECT id, seat_number
+    INTO v_player_id, v_player_seat
+  FROM public.room_players
+  WHERE room_id = p_room_id
+    AND user_id = auth.uid()
+    AND NOT is_bot;
+
+  IF v_player_id IS NULL THEN
+    RAISE EXCEPTION 'You are not a player in this room.';
+  END IF;
+
+  SELECT current_turn_seat, turn_number, draw_deck, open_pile
+    INTO v_turn_seat, v_turn_number, v_deck, v_open_pile
+  FROM public.game_states
+  WHERE room_id = p_room_id AND status = 'playing'
+  FOR UPDATE;
+
+  IF v_turn_seat IS NULL OR v_turn_seat <> v_player_seat THEN
+    RAISE EXCEPTION 'It is not your turn.';
+  END IF;
+
+  SELECT cards, last_draw_turn_number
+    INTO v_hand, v_last_draw
+  FROM public.player_hands
+  WHERE room_id = p_room_id AND room_player_id = v_player_id
+  FOR UPDATE;
+
+  v_hand := COALESCE(v_hand, '[]'::jsonb);
+  v_deck := COALESCE(v_deck, '[]'::jsonb);
+  v_open_pile := COALESCE(v_open_pile, '[]'::jsonb);
+
+  -- Idempotent: polling clients may request the same turn more than once.
+  IF v_last_draw = v_turn_number THEN
+    RETURN jsonb_build_object(
+      'success', true,
+      'already_processed', true,
+      'cards_in_hand', jsonb_array_length(v_hand),
+      'cards_drawn', 0,
+      'cards_remaining', jsonb_array_length(v_deck)
+    );
+  END IF;
+
+  -- Rulebook: if exactly three cards remain and the open pile is empty,
+  -- drawing pauses for the exhaustion sequence.
+  IF jsonb_array_length(v_deck) = 3 AND jsonb_array_length(v_open_pile) = 0 THEN
+    UPDATE public.player_hands
+      SET last_draw_turn_number = v_turn_number, updated_at = now()
+    WHERE room_id = p_room_id AND room_player_id = v_player_id;
+
+    RETURN jsonb_build_object(
+      'success', true, 'draw_paused', true,
+      'cards_in_hand', jsonb_array_length(v_hand),
+      'cards_drawn', 0, 'cards_remaining', jsonb_array_length(v_deck)
+    );
+  END IF;
+
+  v_draw_count := CASE
+    WHEN jsonb_array_length(v_hand) = 0 THEN 3
+    WHEN jsonb_array_length(v_hand) = 1 THEN 2
+    ELSE 1
+  END;
+
+  WHILE v_drawn < v_draw_count AND jsonb_array_length(v_deck) > 0 LOOP
+    v_card := v_deck -> 0;
+    v_hand := v_hand || jsonb_build_array(v_card);
+    v_deck := v_deck - 0;
+    v_drawn := v_drawn + 1;
+  END LOOP;
+
+  UPDATE public.player_hands
+    SET cards = v_hand,
+        last_draw_turn_number = v_turn_number,
+        updated_at = now()
+  WHERE room_id = p_room_id AND room_player_id = v_player_id;
+
+  UPDATE public.game_states
+    SET draw_deck = v_deck, updated_at = now()
+  WHERE room_id = p_room_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'cards_in_hand', jsonb_array_length(v_hand),
+    'cards_drawn', v_drawn,
+    'cards_remaining', jsonb_array_length(v_deck)
+  );
+END;
+
+CREATE OR REPLACE FUNCTION public.run_bot_turn(p_room_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_host uuid;
+  v_bot_id uuid;
+  v_seat integer;
+  v_order integer;
+  v_round integer;
+  v_turn integer;
+  v_next_seat integer;
+  v_next_order integer;
+  v_draw_count integer;
+  v_i integer;
+  v_deck jsonb;
+  v_pile jsonb;
+  v_hand jsonb;
+  v_new_hand jsonb;
+  v_card jsonb;
+  v_top jsonb;
+  v_collected jsonb := '[]'::jsonb;
+  v_collected_cards jsonb := '[]'::jsonb;
+  v_remaining jsonb;
+  v_target_hand jsonb;
+  v_target_new_hand jsonb;
+  v_selected jsonb;
+  v_indices jsonb := '[]'::jsonb;
+  v_index integer;
+  v_play_index bigint;
+  v_collect_count integer := 0;
+  v_deck_count integer;
+  v_non_nure_count integer;
+  v_hand_count integer;
+  v_capacity integer;
+  v_opponent_cards integer;
+  v_target_count integer;
+  v_target record;
+  v_target_id uuid;
+  v_target_order integer;
+  v_wrapped boolean := false;
+  v_reshuffled boolean := false;
+  v_collection_kind text;
+BEGIN
+  SELECT host_id INTO v_host
+  FROM public.game_rooms
+  WHERE id = p_room_id;
+
+  IF v_host IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'Only the room host can run bot turns.';
+  END IF;
+
+  SELECT current_turn_seat, current_round, turn_number, draw_deck, open_pile
+  INTO v_seat, v_round, v_turn, v_deck, v_pile
+  FROM public.game_states
+  WHERE room_id = p_room_id AND status = 'playing'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Game is not active.';
+  END IF;
+
+  SELECT id, seat_number, turn_order
+  INTO v_bot_id, v_seat, v_order
+  FROM public.room_players
+  WHERE room_id = p_room_id
+    AND seat_number = v_seat
+    AND is_bot = true;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'It is not a bot turn.';
+  END IF;
+
+  SELECT cards INTO v_hand
+  FROM public.player_hands
+  WHERE room_id = p_room_id AND room_player_id = v_bot_id
+  FOR UPDATE;
+
+  v_hand := COALESCE(v_hand, '[]'::jsonb);
+  v_deck := COALESCE(v_deck, '[]'::jsonb);
+  v_pile := COALESCE(v_pile, '[]'::jsonb);
+  v_hand_count := jsonb_array_length(v_hand);
+  v_deck_count := jsonb_array_length(v_deck);
+
+  -- Apply the same two-card reshuffle rule as human turns.
+  SELECT count(*)::integer INTO v_non_nure_count
+  FROM jsonb_array_elements(v_deck) AS e(value)
+  WHERE value->>'id' <> 'nure_onna';
+
+  IF v_non_nure_count <= 2 AND jsonb_array_length(v_pile) > 0 THEN
+    SELECT COALESCE(jsonb_agg(value ORDER BY random()), '[]'::jsonb)
+    INTO v_deck
+    FROM jsonb_array_elements(v_deck || v_pile) AS e(value);
+    v_pile := '[]'::jsonb;
+    v_reshuffled := true;
+  END IF;
+
+  IF v_hand_count = 0 THEN
+    v_draw_count := 3;
+  ELSIF v_hand_count = 1 THEN
+    v_draw_count := 2;
+  ELSE
+    v_draw_count := 1;
+  END IF;
+
+
+  IF NOT v_reshuffled AND jsonb_array_length(v_pile) > 0
+     AND v_non_nure_count > 2 THEN
+    v_draw_count := LEAST(v_draw_count, v_non_nure_count - 2);
+  END IF;
+
+  FOR v_i IN 1..v_draw_count LOOP
+    EXIT WHEN jsonb_array_length(v_deck) = 0;
+    v_card := v_deck -> 0;
+    v_deck := v_deck - 0;
+    v_hand := v_hand || jsonb_build_array(v_card);
+  END LOOP;
+
+  v_hand_count := jsonb_array_length(v_hand);
+  v_capacity := 2147483647;
+
+  -- Prefer a Season card that can collect from the current Open Pile.
+  -- Only fall back to the lowest-value Season card when no collection is possible.
+  IF jsonb_array_length(v_pile) > 0 THEN
+    v_top := v_pile -> (jsonb_array_length(v_pile) - 1);
+  ELSE
+    v_top := NULL;
+  END IF;
+
+  SELECT ordinality, value INTO v_play_index, v_card
+  FROM jsonb_array_elements(v_hand) WITH ORDINALITY AS e(value, ordinality)
+  WHERE value->>'category' = 'season'
+  ORDER BY
+    CASE
+      WHEN v_capacity > 0
+       AND v_top->>'category' = 'season'
+       AND v_top->>'season' = value->>'season'
+       AND COALESCE((value->>'number')::integer, -1) > COALESCE((v_top->>'number')::integer, 999)
+      THEN 0 ELSE 1
+    END,
+    COALESCE((value->>'points')::integer, 0),
+    COALESCE((value->>'number')::integer, 99)
+  LIMIT 1;
+
+  -- If there is no Season card, prefer collection specials whose effect can
+  -- legally fit in the bot's hand. Ties are resolved in a fixed preference order.
+  IF v_card IS NULL THEN
+    SELECT count(*)::integer INTO v_opponent_cards
+    FROM public.room_players rp
+    LEFT JOIN public.game_player_states gps ON gps.room_player_id = rp.id
+    LEFT JOIN public.player_hands ph ON ph.room_id = p_room_id AND ph.room_player_id = rp.id
+    WHERE rp.room_id = p_room_id
+      AND rp.id <> v_bot_id
+      AND COALESCE(gps.is_eliminated, false) = false
+      AND jsonb_array_length(COALESCE(ph.cards, '[]'::jsonb)) > 0;
+
+    SELECT ordinality, value INTO v_play_index, v_card
+    FROM jsonb_array_elements(v_hand) WITH ORDINALITY AS e(value, ordinality)
+    WHERE
+      (value->>'id' = 'moon_rabbit' AND jsonb_array_length(v_pile) > 0 AND v_capacity > 0)
+      OR (value->>'id' = 'kappa' AND jsonb_array_length(v_pile) > 0 AND v_capacity > 0)
+      OR (value->>'id' = 'sakura_leaf' AND v_opponent_cards <= v_capacity)
+      OR (
+        value->>'id' = 'tengu'
+        AND EXISTS (
+          SELECT 1
+          FROM public.room_players rp
+          LEFT JOIN public.game_player_states gps ON gps.room_player_id = rp.id
+          LEFT JOIN public.player_hands ph ON ph.room_id = p_room_id AND ph.room_player_id = rp.id
+          WHERE rp.room_id = p_room_id
+            AND rp.id <> v_bot_id
+            AND COALESCE(gps.is_eliminated, false) = false
+            AND LEAST(2, jsonb_array_length(COALESCE(ph.cards, '[]'::jsonb))) <= v_capacity
+        )
+      )
+    ORDER BY array_position(
+      ARRAY['moon_rabbit','kappa','sakura_leaf','tengu']::text[],
+      value->>'id'
+    )
+    LIMIT 1;
+  END IF;
+
+  IF v_card IS NOT NULL THEN
+    v_collection_kind := v_card->>'id';
+  END IF;
+
+  -- If no collection special is currently usable, play a normal-use special.
+  IF v_card IS NULL THEN
+    SELECT ordinality, value INTO v_play_index, v_card
+    FROM jsonb_array_elements(v_hand) WITH ORDINALITY AS e(value, ordinality)
+    WHERE value->>'id' IN (
+      'sensei_man','sensei_woman','nure_onna',
+      'silkworm_shield','tsubaki_flower','bonsai'
+    )
+    ORDER BY array_position(
+      ARRAY['sensei_man','sensei_woman','nure_onna',
+            'silkworm_shield','tsubaki_flower','bonsai']::text[],
+      value->>'id'
+    )
+    LIMIT 1;
+  END IF;
+
+  IF v_card IS NULL THEN
+    RAISE EXCEPTION 'Bot has no playable Season or special card.';
+  END IF;
+
+  -- Remove the played card before adding any collected cards.
+  SELECT COALESCE(jsonb_agg(value ORDER BY ordinality), '[]'::jsonb)
+  INTO v_new_hand
+  FROM jsonb_array_elements(v_hand) WITH ORDINALITY AS e(value, ordinality)
+  WHERE ordinality <> v_play_index;
+
+  -- Season collection remains unchanged: a higher same-season card takes
+  -- up to the top two cards beneath it.
+  IF v_card->>'category' = 'season' AND jsonb_array_length(v_pile) > 0
+     AND v_card->>'category' = 'season' THEN
+    v_top := v_pile -> (jsonb_array_length(v_pile) - 1);
+    IF v_top->>'category' = 'season'
+       AND v_top->>'season' = v_card->>'season'
+       AND (v_card->>'number')::integer > (v_top->>'number')::integer THEN
+      v_collect_count := LEAST(2, jsonb_array_length(v_pile), v_capacity);
+      IF v_collect_count > 0 THEN
+        SELECT COALESCE(jsonb_agg(value ORDER BY ordinality), '[]'::jsonb)
+        INTO v_collected
+        FROM jsonb_array_elements(v_pile) WITH ORDINALITY AS e(value, ordinality)
+        WHERE ordinality > jsonb_array_length(v_pile) - v_collect_count;
+
+        SELECT COALESCE(jsonb_agg(value ORDER BY ordinality), '[]'::jsonb)
+        INTO v_remaining
+        FROM jsonb_array_elements(v_pile) WITH ORDINALITY AS e(value, ordinality)
+        WHERE ordinality <= jsonb_array_length(v_pile) - v_collect_count;
+
+        v_new_hand := v_new_hand || v_collected;
+        v_pile := v_remaining;
+        v_collected_cards := v_collected;
+      END IF;
+    END IF;
+  END IF;
+
+  -- Kappa: take one randomly chosen card from anywhere in the Open Pile.
+  IF v_collection_kind = 'kappa' AND jsonb_array_length(v_pile) > 0 AND v_capacity > 0 THEN
+    -- Prefer the highest-point card in the pile; break ties in favour of the topmost card.
+    SELECT (ordinality - 1)::integer, value
+    INTO v_index, v_selected
+    FROM jsonb_array_elements(v_pile) WITH ORDINALITY AS e(value, ordinality)
+    ORDER BY COALESCE((value->>'points')::integer, (value->>'number')::integer, 0) DESC,
+             ordinality DESC
+    LIMIT 1;
+
+    SELECT COALESCE(jsonb_agg(value ORDER BY ordinality), '[]'::jsonb)
+    INTO v_remaining
+    FROM jsonb_array_elements(v_pile) WITH ORDINALITY AS e(value, ordinality)
+    WHERE ordinality <> v_index + 1;
+
+    v_pile := v_remaining;
+    v_new_hand := v_new_hand || jsonb_build_array(v_selected);
+    v_collected_cards := v_collected_cards || jsonb_build_array(v_selected);
+    v_collect_count := 1;
+  END IF;
+
+  -- Moon Rabbit: collect up to the top three cards, without exceeding 12 cards.
+  IF v_collection_kind = 'moon_rabbit' AND jsonb_array_length(v_pile) > 0 AND v_capacity > 0 THEN
+    v_collect_count := LEAST(3, jsonb_array_length(v_pile), v_capacity);
+
+    SELECT COALESCE(jsonb_agg(value ORDER BY ordinality), '[]'::jsonb)
+    INTO v_collected
+    FROM jsonb_array_elements(v_pile) WITH ORDINALITY AS e(value, ordinality)
+    WHERE ordinality > jsonb_array_length(v_pile) - v_collect_count;
+
+    SELECT COALESCE(jsonb_agg(value ORDER BY ordinality), '[]'::jsonb)
+    INTO v_remaining
+    FROM jsonb_array_elements(v_pile) WITH ORDINALITY AS e(value, ordinality)
+    WHERE ordinality <= jsonb_array_length(v_pile) - v_collect_count;
+
+    v_pile := v_remaining;
+    v_new_hand := v_new_hand || v_collected;
+    v_collected_cards := v_collected;
+  END IF;
+
+  -- Sakura Leaf: take one random hidden card from every active opponent
+  -- who has a card. It is selected only when all such cards fit in hand.
+  IF v_collection_kind = 'sakura_leaf' THEN
+    FOR v_target IN
+      SELECT rp.id, rp.turn_order
+      FROM public.room_players rp
+      LEFT JOIN public.game_player_states gps ON gps.room_player_id = rp.id
+      WHERE rp.room_id = p_room_id
+        AND rp.id <> v_bot_id
+        AND COALESCE(gps.is_eliminated, false) = false
+      ORDER BY rp.turn_order
+    LOOP
+      SELECT cards INTO v_target_hand
+      FROM public.player_hands
+      WHERE room_id = p_room_id AND room_player_id = v_target.id
+      FOR UPDATE;
+      v_target_hand := COALESCE(v_target_hand, '[]'::jsonb);
+
+      IF jsonb_array_length(v_target_hand) > 0 THEN
+        v_index := floor(random() * jsonb_array_length(v_target_hand))::integer;
+        SELECT value INTO v_selected
+        FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY AS e(value, ordinality)
+        WHERE ordinality = v_index + 1;
+
+        SELECT COALESCE(jsonb_agg(value ORDER BY ordinality), '[]'::jsonb)
+        INTO v_target_new_hand
+        FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY AS e(value, ordinality)
+        WHERE ordinality <> v_index + 1;
+
+        UPDATE public.player_hands
+        SET cards = v_target_new_hand, updated_at = now()
+        WHERE room_id = p_room_id AND room_player_id = v_target.id;
+
+        v_new_hand := v_new_hand || jsonb_build_array(v_selected);
+        v_collected_cards := v_collected_cards || jsonb_build_array(
+          jsonb_build_object('id','hidden_card','name','Hidden card','category','hidden')
+        );
+        v_collect_count := v_collect_count + 1;
+      END IF;
+    END LOOP;
+  END IF;
+
+  -- Tengu: choose one active opponent with a hand and take up to two
+  -- random hidden cards from that opponent only.
+  IF v_collection_kind = 'tengu' THEN
+    SELECT rp.id, jsonb_array_length(COALESCE(ph.cards, '[]'::jsonb))::integer
+    INTO v_target_id, v_target_count
+    FROM public.room_players rp
+    LEFT JOIN public.game_player_states gps ON gps.room_player_id = rp.id
+    LEFT JOIN public.player_hands ph ON ph.room_id = p_room_id AND ph.room_player_id = rp.id
+    WHERE rp.room_id = p_room_id
+      AND rp.id <> v_bot_id
+      AND COALESCE(gps.is_eliminated, false) = false
+      AND LEAST(2, jsonb_array_length(COALESCE(ph.cards, '[]'::jsonb))) <= v_capacity
+    ORDER BY
+      jsonb_array_length(COALESCE(ph.cards, '[]'::jsonb)) DESC,
+      rp.turn_order
+    LIMIT 1;
+
+    IF v_target_id IS NOT NULL THEN
+      SELECT cards INTO v_target_hand
+      FROM public.player_hands
+      WHERE room_id = p_room_id AND room_player_id = v_target_id
+      FOR UPDATE;
+      v_target_hand := COALESCE(v_target_hand, '[]'::jsonb);
+      v_collect_count := LEAST(2, jsonb_array_length(v_target_hand));
+
+      SELECT COALESCE(jsonb_agg(card_index ORDER BY random()), '[]'::jsonb)
+      INTO v_indices
+      FROM (
+        SELECT (ordinality - 1)::integer AS card_index
+        FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY AS e(value, ordinality)
+        ORDER BY random()
+        LIMIT v_collect_count
+      ) AS chosen;
+
+      FOR v_index IN SELECT (value::text)::integer FROM jsonb_array_elements(v_indices) LOOP
+        SELECT value INTO v_selected
+        FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY AS e(value, ordinality)
+        WHERE ordinality = v_index + 1;
+        v_new_hand := v_new_hand || jsonb_build_array(v_selected);
+        v_collected_cards := v_collected_cards || jsonb_build_array(
+          jsonb_build_object('id','hidden_card','name','Hidden card','category','hidden')
+        );
+      END LOOP;
+
+      SELECT COALESCE(jsonb_agg(value ORDER BY ordinality), '[]'::jsonb)
+      INTO v_target_new_hand
+      FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY AS e(value, ordinality)
+      WHERE NOT ((ordinality - 1)::integer IN (
+        SELECT (value::text)::integer FROM jsonb_array_elements(v_indices)
+      ));
+
+      UPDATE public.player_hands
+      SET cards = v_target_new_hand, updated_at = now()
+      WHERE room_id = p_room_id AND room_player_id = v_target_id;
+    END IF;
+  END IF;
+
+  -- Nure-Onna returns to the bottom of the Draw Deck; all other played
+  -- cards remain on top of the Open Pile.
+  IF v_card->>'id' = 'nure_onna' THEN
+    v_deck := v_deck || jsonb_build_array(v_card);
+  ELSE
+    v_pile := v_pile || jsonb_build_array(v_card);
+  END IF;
+
+  -- Advance clockwise, skipping eliminated players.
+  SELECT rp.seat_number, rp.turn_order
+  INTO v_next_seat, v_next_order
+  FROM public.room_players rp
+  LEFT JOIN public.game_player_states gps ON gps.room_player_id = rp.id
+  WHERE rp.room_id = p_room_id
+    AND rp.turn_order > v_order
+    AND COALESCE(gps.is_eliminated, false) = false
+  ORDER BY rp.turn_order
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    SELECT rp.seat_number, rp.turn_order
+    INTO v_next_seat, v_next_order
+    FROM public.room_players rp
+    LEFT JOIN public.game_player_states gps ON gps.room_player_id = rp.id
+    WHERE rp.room_id = p_room_id
+      AND COALESCE(gps.is_eliminated, false) = false
+    ORDER BY rp.turn_order
+    LIMIT 1;
+    v_wrapped := true;
+  END IF;
+
+  IF v_next_seat IS NULL THEN
+    RAISE EXCEPTION 'No active player remains.';
+  END IF;
+
+  UPDATE public.player_hands
+  SET cards = v_new_hand,
+      last_draw_turn_number = v_turn + 1,
+      updated_at = now()
+  WHERE room_id = p_room_id AND room_player_id = v_bot_id;
+
+  UPDATE public.game_states
+  SET draw_deck = v_deck,
+      open_pile = v_pile,
+      current_turn_seat = v_next_seat,
+      turn_number = v_turn + 1,
+      current_round = v_round + CASE WHEN v_wrapped THEN 1 ELSE 0 END,
+      updated_at = now()
+  WHERE room_id = p_room_id;
+
+  -- Hidden-card collection effects are represented as hidden cards in the
+  -- animation event, matching the human Sakura Leaf and Tengu behaviour.
+  IF v_collection_kind IN ('sakura_leaf','tengu') AND v_collect_count > 0 THEN
+    UPDATE public.game_animation_events
+    SET collected_cards = v_collected_cards,
+        recipient_player_id = v_bot_id
+    WHERE id = (
+      SELECT id
+      FROM public.game_animation_events
+      WHERE room_id = p_room_id AND actor_player_id = v_bot_id
+      ORDER BY id DESC
+      LIMIT 1
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'played_card', v_card->>'name',
+    'cards_drawn', v_draw_count,
+    'cards_collected', v_collect_count,
+    'collection_ability', v_collection_kind,
+    'reshuffled', v_reshuffled,
+    'next_seat', v_next_seat
+  );
+END;
+
+CREATE OR REPLACE FUNCTION public.play_sakura_leaf(
+  p_room_id uuid,
+  p_card_id text,
+  p_selections jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_state record;
+  v_actor record;
+  v_hand jsonb;
+  v_new_hand jsonb;
+  v_pile jsonb;
+  v_card jsonb;
+  v_target record;
+  v_target_hand jsonb;
+  v_target_new_hand jsonb;
+  v_selected jsonb;
+  v_collected_cards jsonb:='[]'::jsonb;
+  v_selection jsonb;
+  v_target_ids uuid[];
+  v_seen_ids uuid[] := ARRAY[]::uuid[];
+  v_target_id uuid;
+  v_index integer;
+  v_count integer;
+  v_order integer;
+  v_next_seat integer;
+  v_round integer;
+  v_wrapped boolean := false;
+BEGIN
+  IF p_card_id IS DISTINCT FROM 'sakura_leaf' OR COALESCE(jsonb_typeof(p_selections),'')<>'array' THEN
+    RAISE EXCEPTION 'Invalid Sakura Leaf selection.';
+  END IF;
+
+  SELECT * INTO v_state
+  FROM public.game_states
+  WHERE room_id=p_room_id AND status='playing'
+  FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Game is not active.'; END IF;
+
+  SELECT * INTO v_actor
+  FROM public.room_players
+  WHERE room_id=p_room_id AND user_id=auth.uid()
+    AND seat_number=v_state.current_turn_seat AND NOT is_bot;
+  IF NOT FOUND THEN RAISE EXCEPTION 'It is not your turn.'; END IF;
+
+  SELECT cards INTO v_hand
+  FROM public.player_hands
+  WHERE room_id=p_room_id AND room_player_id=v_actor.id
+  FOR UPDATE;
+  v_hand:=COALESCE(v_hand,'[]'::jsonb);
+  v_pile:=COALESCE(v_state.open_pile,'[]'::jsonb);
+
+  SELECT value INTO v_card
+  FROM jsonb_array_elements(v_hand) AS e(value)
+  WHERE value->>'id'='sakura_leaf' LIMIT 1;
+  IF v_card IS NULL THEN RAISE EXCEPTION 'Sakura Leaf is not in your hand.'; END IF;
+
+  SELECT COALESCE(array_agg(rp.id ORDER BY rp.turn_order),ARRAY[]::uuid[])
+  INTO v_target_ids
+  FROM public.room_players rp
+  LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+  WHERE rp.room_id=p_room_id AND rp.id<>v_actor.id
+    AND COALESCE(gps.is_eliminated,false)=false;
+
+  IF jsonb_array_length(p_selections)<>COALESCE(array_length(v_target_ids,1),0) THEN
+    RAISE EXCEPTION 'Choose exactly one hidden card from every active opponent.';
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(value ORDER BY ordinality),'[]'::jsonb)
+  INTO v_new_hand
+  FROM jsonb_array_elements(v_hand) WITH ORDINALITY e(value,ordinality)
+  WHERE value->>'id'<>'sakura_leaf';
+
+  FOR v_selection IN SELECT value FROM jsonb_array_elements(p_selections) LOOP
+    v_target_id:=(v_selection->>'target_player_id')::uuid;
+    v_index:=(v_selection->>'card_index')::integer;
+    IF v_target_id IS NULL THEN RAISE EXCEPTION 'Invalid opponent selection.'; END IF;
+    IF v_target_id=ANY(v_seen_ids) THEN
+      RAISE EXCEPTION 'Each opponent can be selected only once.';
+    END IF;
+    v_seen_ids:=array_append(v_seen_ids,v_target_id);
+    IF NOT (v_target_id=ANY(v_target_ids)) OR (v_index IS NOT NULL AND v_index<0) THEN
+      RAISE EXCEPTION 'Invalid opponent or hidden-card selection.';
+    END IF;
+
+    SELECT cards INTO v_target_hand
+    FROM public.player_hands
+    WHERE room_id=p_room_id AND room_player_id=v_target_id
+    FOR UPDATE;
+    v_target_hand:=COALESCE(v_target_hand,'[]'::jsonb);
+
+    IF v_index IS NULL THEN
+      IF jsonb_array_length(v_target_hand)>0 THEN
+        RAISE EXCEPTION 'An opponent hand changed. Please make your selections again.';
+      END IF;
+      v_target_new_hand:=v_target_hand;
+    ELSE
+      IF v_index>=jsonb_array_length(v_target_hand) THEN
+        RAISE EXCEPTION 'An opponent hand changed. Please make your selections again.';
+      END IF;
+      SELECT value INTO v_selected
+      FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY e(value,ordinality)
+      WHERE ordinality=v_index+1;
+      v_new_hand:=v_new_hand||jsonb_build_array(v_selected);
+      v_collected_cards:=v_collected_cards||jsonb_build_array(v_selected);
+
+      SELECT COALESCE(jsonb_agg(value ORDER BY ordinality),'[]'::jsonb)
+      INTO v_target_new_hand
+      FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY e(value,ordinality)
+      WHERE ordinality<>v_index+1;
+    END IF;
+
+    UPDATE public.player_hands SET cards=v_target_new_hand,updated_at=now()
+    WHERE room_id=p_room_id AND room_player_id=v_target_id;
+  END LOOP;
+
+  v_pile:=v_pile||jsonb_build_array(v_card);
+  SELECT rp.seat_number INTO v_next_seat
+  FROM public.room_players rp
+  LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+  WHERE rp.room_id=p_room_id AND rp.turn_order>v_actor.turn_order
+    AND COALESCE(gps.is_eliminated,false)=false
+  ORDER BY rp.turn_order LIMIT 1;
+  IF v_next_seat IS NULL THEN
+    SELECT rp.seat_number INTO v_next_seat
+    FROM public.room_players rp
+    LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+    WHERE rp.room_id=p_room_id AND COALESCE(gps.is_eliminated,false)=false
+    ORDER BY rp.turn_order LIMIT 1;
+    v_wrapped:=true;
+  END IF;
+  IF v_next_seat IS NULL THEN RAISE EXCEPTION 'No active player remains.'; END IF;
+
+  UPDATE public.player_hands SET cards=v_new_hand,updated_at=now()
+  WHERE room_id=p_room_id AND room_player_id=v_actor.id;
+  UPDATE public.game_states SET open_pile=v_pile,current_turn_seat=v_next_seat,
+    turn_number=v_state.turn_number+1,
+    current_round=v_state.current_round+CASE WHEN v_wrapped THEN 1 ELSE 0 END,
+    updated_at=now()
+  WHERE room_id=p_room_id;
+
+  UPDATE public.game_animation_events SET collected_cards=COALESCE((SELECT jsonb_agg(jsonb_build_object('id','hidden_card','name','Hidden card','category','hidden') ORDER BY gs.n) FROM generate_series(1,jsonb_array_length(v_collected_cards)) AS gs(n)),'[]'::jsonb),recipient_player_id=v_actor.id
+  WHERE id=(SELECT id FROM public.game_animation_events WHERE room_id=p_room_id AND actor_player_id=v_actor.id ORDER BY id DESC LIMIT 1);
+
+  RETURN jsonb_build_object('success',true,'played_card',v_card->>'name',
+    'cards_collected',jsonb_array_length(v_collected_cards),'next_seat',v_next_seat);
+END;
+
+CREATE OR REPLACE FUNCTION public.play_tengu(
+  p_room_id uuid,
+  p_card_id text,
+  p_target_player_id uuid,
+  p_card_indices jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_state record;
+  v_actor record;
+  v_target record;
+  v_hand jsonb;
+  v_new_hand jsonb;
+  v_target_hand jsonb;
+  v_target_new_hand jsonb;
+  v_pile jsonb;
+  v_card jsonb;
+  v_selected jsonb;
+  v_collected_cards jsonb:='[]'::jsonb;
+  v_index integer;
+  v_indices integer[]:=ARRAY[]::integer[];
+  v_next_seat integer;
+  v_wrapped boolean:=false;
+  v_expected_count integer;
+BEGIN
+  IF p_card_id IS DISTINCT FROM 'tengu' OR COALESCE(jsonb_typeof(p_card_indices),'')<>'array' THEN
+    RAISE EXCEPTION 'Invalid Tengu selection.';
+  END IF;
+  IF jsonb_array_length(p_card_indices)>2 THEN
+    RAISE EXCEPTION 'Choose up to two hidden cards.';
+  END IF;
+
+  SELECT * INTO v_state FROM public.game_states
+  WHERE room_id=p_room_id AND status='playing' FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Game is not active.'; END IF;
+
+  SELECT * INTO v_actor FROM public.room_players
+  WHERE room_id=p_room_id AND user_id=auth.uid()
+    AND seat_number=v_state.current_turn_seat AND NOT is_bot;
+  IF NOT FOUND THEN RAISE EXCEPTION 'It is not your turn.'; END IF;
+
+  SELECT * INTO v_target
+  FROM public.room_players rp
+  LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+  WHERE rp.room_id=p_room_id AND rp.id=p_target_player_id
+    AND rp.id<>v_actor.id AND COALESCE(gps.is_eliminated,false)=false;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Choose an active opponent.'; END IF;
+
+  SELECT cards INTO v_hand FROM public.player_hands
+  WHERE room_id=p_room_id AND room_player_id=v_actor.id FOR UPDATE;
+  v_hand:=COALESCE(v_hand,'[]'::jsonb);
+  SELECT value INTO v_card FROM jsonb_array_elements(v_hand) e(value)
+  WHERE value->>'id'='tengu' LIMIT 1;
+  IF v_card IS NULL THEN RAISE EXCEPTION 'Tengu is not in your hand.'; END IF;
+
+  SELECT cards INTO v_target_hand FROM public.player_hands
+  WHERE room_id=p_room_id AND room_player_id=v_target.id FOR UPDATE;
+  v_target_hand:=COALESCE(v_target_hand,'[]'::jsonb);
+  v_expected_count:=LEAST(2,jsonb_array_length(v_target_hand));
+  IF jsonb_array_length(p_card_indices)<>v_expected_count THEN
+    RAISE EXCEPTION 'Select % hidden card(s) from this opponent.',v_expected_count;
+  END IF;
+
+  FOR v_index IN SELECT (value::text)::integer FROM jsonb_array_elements(p_card_indices) LOOP
+    IF v_index<0 OR v_index>=jsonb_array_length(v_target_hand) OR v_index=ANY(v_indices) THEN
+      RAISE EXCEPTION 'Invalid or repeated hidden-card selection.';
+    END IF;
+    v_indices:=array_append(v_indices,v_index);
+    SELECT value INTO v_selected FROM jsonb_array_elements(v_target_hand)
+      WITH ORDINALITY e(value,ordinality) WHERE ordinality=v_index+1;
+    v_new_hand:=COALESCE(v_new_hand,'[]'::jsonb)||jsonb_build_array(v_selected);
+    v_collected_cards:=v_collected_cards||jsonb_build_array(v_selected);
+  END LOOP;
+
+  SELECT COALESCE(jsonb_agg(value ORDER BY ordinality),'[]'::jsonb)
+  INTO v_target_new_hand
+  FROM jsonb_array_elements(v_target_hand) WITH ORDINALITY e(value,ordinality)
+  WHERE NOT ((ordinality-1)::integer=ANY(v_indices));
+
+  SELECT COALESCE(jsonb_agg(value ORDER BY ordinality),'[]'::jsonb)
+  INTO v_hand
+  FROM jsonb_array_elements(v_hand) WITH ORDINALITY e(value,ordinality)
+  WHERE value->>'id'<>'tengu';
+  v_hand:=v_hand||COALESCE(v_new_hand,'[]'::jsonb);
+  v_pile:=COALESCE(v_state.open_pile,'[]'::jsonb)||jsonb_build_array(v_card);
+  SELECT rp.seat_number INTO v_next_seat
+  FROM public.room_players rp
+  LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+  WHERE rp.room_id=p_room_id AND rp.turn_order>v_actor.turn_order
+    AND COALESCE(gps.is_eliminated,false)=false
+  ORDER BY rp.turn_order LIMIT 1;
+  IF v_next_seat IS NULL THEN
+    SELECT rp.seat_number INTO v_next_seat
+    FROM public.room_players rp
+    LEFT JOIN public.game_player_states gps ON gps.room_player_id=rp.id
+    WHERE rp.room_id=p_room_id AND COALESCE(gps.is_eliminated,false)=false
+    ORDER BY rp.turn_order LIMIT 1;
+    v_wrapped:=true;
+  END IF;
+  IF v_next_seat IS NULL THEN RAISE EXCEPTION 'No active player remains.'; END IF;
+
+  UPDATE public.player_hands SET cards=v_target_new_hand,updated_at=now()
+  WHERE room_id=p_room_id AND room_player_id=v_target.id;
+  UPDATE public.player_hands SET cards=v_hand,updated_at=now()
+  WHERE room_id=p_room_id AND room_player_id=v_actor.id;
+  UPDATE public.game_states SET open_pile=v_pile,current_turn_seat=v_next_seat,
+    turn_number=v_state.turn_number+1,
+    current_round=v_state.current_round+CASE WHEN v_wrapped THEN 1 ELSE 0 END,
+    updated_at=now()
+  WHERE room_id=p_room_id;
+
+  UPDATE public.game_animation_events SET collected_cards=COALESCE((SELECT jsonb_agg(jsonb_build_object('id','hidden_card','name','Hidden card','category','hidden') ORDER BY gs.n) FROM generate_series(1,jsonb_array_length(v_collected_cards)) AS gs(n)),'[]'::jsonb),recipient_player_id=v_actor.id
+  WHERE id=(SELECT id FROM public.game_animation_events WHERE room_id=p_room_id AND actor_player_id=v_actor.id ORDER BY id DESC LIMIT 1);
+
+  RETURN jsonb_build_object('success',true,'played_card',v_card->>'name',
+    'cards_collected',jsonb_array_length(v_collected_cards),'next_seat',v_next_seat);
+END;
