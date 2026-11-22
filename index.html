@@ -960,15 +960,14 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     ]);
     lastPublicBattleSnapshot={...pending,_battleKey:battleKey};
   }
-  const displayBattle=pending || (
-    lastPublicBattleSnapshot &&
-    dismissedPublicBattleKey!==lastPublicBattleSnapshot._battleKey
-      ?lastPublicBattleSnapshot:null
-  );
+  // Show the battle panel only while an attack is still pending.
+  // Once the target confirms elimination/defence, clear the battle preview
+  // automatically so nobody has to press a second OK to resume the game.
+  const displayBattle=pending;
   battleKey=displayBattle?displayBattle._battleKey:'';
-  if(!displayBattle && lastPublicBattleSnapshot &&
-     dismissedPublicBattleKey===lastPublicBattleSnapshot._battleKey){
+  if(!pending){
     lastPublicBattleSnapshot=null;
+    dismissedPublicBattleKey='';
   }
   // Notify the chosen human target once before showing the normal defence panel.
   if(pending && pending.attacker_player_id!==me.id && acknowledgedAttackNoticeKey!==battleKey){
