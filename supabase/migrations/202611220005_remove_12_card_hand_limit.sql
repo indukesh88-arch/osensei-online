@@ -22,7 +22,7 @@ BEGIN
 
   v_new := regexp_replace(
     v_def,
-    'v_draw_count[[:space:]]*:=[[:space:]]*LEAST\(v_draw_count,[[:space:]]*12[[:space:]]*-[[:space:]]*jsonb_array_length\(v_hand\)\);',
+    'v_draw_count[[:space:]]*:=[[:space:]]*LEAST[^;]*;',
     '',
     'i'
   );
