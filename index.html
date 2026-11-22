@@ -971,14 +971,17 @@ async function renderSpecialActions(players,me,cards,currentTurnSeat,currentRoun
     lastPublicBattleSnapshot=null;
   }
   // Notify the chosen human target once before showing the normal defence panel.
-  if(pending && pending.attacker_player_id!==me.id && pending.target_player_id===me.id && acknowledgedAttackNoticeKey!==battleKey){
+  if(pending && pending.attacker_player_id!==me.id && acknowledgedAttackNoticeKey!==battleKey){
     const attacker=players.find(p=>p.id===pending.attacker_player_id);
     root.innerHTML="";
     const overlay=document.createElement("div");overlay.className="attack-notice";
     const box=document.createElement("div");box.className="attack-notice-box";
     const title=document.createElement("h2");title.textContent="Elimination Challenge";
     const message=document.createElement("p");
-    message.textContent=(attacker?.player_name||"Another player")+" has chosen you for elimination. Press OK to view the attack and respond.";
+    const target=players.find(p=>p.id===pending.target_player_id);
+    message.textContent=pending.target_player_id===me.id
+      ?(attacker?.player_name||"Another player")+" has chosen you for elimination. Press OK to view the attack and respond."
+      :(attacker?.player_name||"Another player")+" has chosen "+(target?.player_name||"another player")+" for elimination. Press OK to view the attack.";
     const ok=document.createElement("button");ok.type="button";ok.textContent="OK";
     ok.onclick=async()=>{
       acknowledgedAttackNoticeKey=battleKey;
