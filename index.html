@@ -195,7 +195,9 @@ footer{text-align:center;color:#8d7b70;font:11px Arial;margin-top:30px}
   <div class="small">WINNER</div>
   <div id="winnerName" class="winner-name">Loading...</div>
   <p id="victoryMessage" class="game-note">The game has ended.</p>
-  <button onclick="leaveRoom()">Return Home</button>
+  <button id="playAgainBtn" onclick="playAgain()" class="hidden">Play Again</button>
+  <div id="playAgainStatus" class="status"></div>
+  <button class="secondary" onclick="leaveRoom()">Return Home</button>
 </section>
 
 <footer>ŌSENSEI ONLINE · THE WAY OF THE SEASONS</footer>
@@ -209,6 +211,7 @@ const db = window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let currentUser=null;
 let currentRoom=null;
 let currentRoomPlayerId=null;
+let lastObservedRoomStatus=null;
 let roomChannel=null;
 let roomPollTimer=null;
 let roomPollBusy=false;
@@ -329,6 +332,7 @@ function resetEliminationPreview(){
 
 async function openRoom(id,code,max){
   if(currentRoom!==id)resetEliminationPreview();
+  if(currentRoom!==id)lastObservedRoomStatus=null;
   currentRoom=id;
   document.getElementById("displayCode").textContent=code;
   document.getElementById("seatInfo").textContent="Room capacity: "+max+" players";
@@ -343,7 +347,7 @@ async function openRoom(id,code,max){
   // Keep every player in sync even when game-state tables are not enabled for Realtime.
   if(roomPollTimer) clearInterval(roomPollTimer);
   roomPollTimer=setInterval(async()=>{
-    if(!currentRoom || document.getElementById("gameScreen").classList.contains("hidden") || roomPollBusy)return;
+    if(!currentRoom || (document.getElementById("gameScreen").classList.contains("hidden") && document.getElementById("victoryScreen").classList.contains("hidden")) || roomPollBusy)return;
     roomPollBusy=true;
     try{await refreshRoom();}
     catch(e){message("gameStatus","Connection refresh failed: "+e.message);}
@@ -355,6 +359,15 @@ async function refreshRoom(){
   if(!currentRoom)return;
   const {data:room,error}=await db.from("game_rooms").select("*").eq("id",currentRoom).single();
   if(error){message("lobbyStatus",error.message);return;}
+  if(room.status==="playing" && lastObservedRoomStatus==="finished"){
+    resetEliminationPreview();
+    selectedCardId=null;selectedKappaPileIndex=null;currentOpenPileCards=[];
+    collectOpponents=[];sakuraSelections=[];sakuraPendingIndex=null;
+    tenguTargetId=null;tenguSelectedIndices=[];collectSelectionStarted=false;
+    cardsForCurrentHand=[];autoDrawInProgress=false;
+    selectedAttackCardIds=[];selectedDefenceCardIds=[];
+  }
+  lastObservedRoomStatus=room.status;
   const {data:players,error:playerError}=await db.from("room_players").select("id,user_id,player_name,seat_number,turn_order,is_bot,is_connected").eq("room_id",currentRoom).order("seat_number");
   if(playerError){message("lobbyStatus",playerError.message);return;}
   document.getElementById("displayCode").textContent=room.room_code;
@@ -375,6 +388,8 @@ async function refreshRoom(){
   const isHost=Boolean(currentUser && currentUser.id===room.host_id);
   const startBtn=document.getElementById("startGameBtn");
   startBtn.classList.toggle("hidden",!isHost || room.status!=="waiting");
+  const playAgainBtn=document.getElementById("playAgainBtn");
+  playAgainBtn.classList.toggle("hidden",!isHost || room.status!=="finished");
   startBtn.disabled=players.length!==room.max_players;
   if(room.status==="finished"){
     const {data:playerStates,error:statesError}=await db.from("game_player_states")
@@ -389,6 +404,7 @@ async function refreshRoom(){
     const survivors=(playerStates||[]).filter(p=>!p.is_eliminated);
     const winner=survivors.length===1?players.find(p=>p.id===survivors[0].room_player_id):null;
     showVictoryPage(winner);
+    message("playAgainStatus",isHost?"Start another game with the same players and room.":"Waiting for the room host to start another game...");
   }else if(room.status==="playing"){
     await showGameScreen(room,players);
     message("lobbyStatus","Game initialized successfully.");
@@ -1203,6 +1219,22 @@ async function respondToAttack(action,cardIds){
 }
 
 function returnToLobby(){show("lobby");}
+
+async function playAgain(){
+  if(!currentRoom)return;
+  const btn=document.getElementById("playAgainBtn");
+  btn.disabled=true;
+  message("playAgainStatus","Starting a new game in this room...");
+  try{
+    await authenticate();
+    const {error}=await db.rpc("restart_game",{p_room_id:currentRoom});
+    if(error)throw error;
+    await refreshRoom();
+  }catch(e){
+    message("playAgainStatus","Could not start again: "+e.message);
+    btn.disabled=false;
+  }
+}
 
 async function startGame(){
   if(!currentRoom)return;
