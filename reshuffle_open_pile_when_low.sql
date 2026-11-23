@@ -1,12 +1,12 @@
--- Ōsensei: automatically reshuffle the open pile when the draw deck
--- reaches its final two cards.
+-- Ōsensei: silently reshuffle the open pile into the draw deck
+-- whenever the draw deck is down to 2 cards or fewer.
 --
--- The reshuffle is silent: no cards are dealt to players and no animation
--- event is created here. All cards still in NEW.open_pile are shuffled
--- together with the remaining draw deck, then the open pile is cleared.
+-- This runs when either pile changes, so it also handles the case where
+-- the draw deck reaches 0/1/2 while the open pile is temporarily empty
+-- and cards are played to the open pile afterward.
 --
--- The 3 -> 0 condition also covers a bot turn that consumes all three
--- remaining cards in one batch; normal human draws trigger at 2 -> 1.
+-- A 3 -> 0 draw-deck change is also covered for a bot that draws all
+-- three remaining cards in one batch.
 
 CREATE OR REPLACE FUNCTION public.reshuffle_open_pile_when_draw_deck_low()
 RETURNS trigger
@@ -19,7 +19,8 @@ DECLARE
     v_pile_count integer;
     v_shuffled_deck jsonb;
 BEGIN
-    IF NEW.draw_deck IS NOT DISTINCT FROM OLD.draw_deck THEN
+    IF NEW.draw_deck IS NOT DISTINCT FROM OLD.draw_deck
+       AND NEW.open_pile IS NOT DISTINCT FROM OLD.open_pile THEN
         RETURN NEW;
     END IF;
 
@@ -27,14 +28,13 @@ BEGIN
     v_new_count := jsonb_array_length(COALESCE(NEW.draw_deck, '[]'::jsonb));
     v_pile_count := jsonb_array_length(COALESCE(NEW.open_pile, '[]'::jsonb));
 
-    -- Trigger on a normal draw that starts with 2 or fewer cards.
-    -- Also catch a bot batch that consumes all 3 remaining cards at once.
-    IF v_new_count >= v_old_count
-       OR NOT (v_old_count <= 2 OR (v_old_count = 3 AND v_new_count = 0))
-       OR v_pile_count = 0 THEN
+    IF v_pile_count = 0
+       OR NOT (v_new_count <= 2 OR (v_old_count = 3 AND v_new_count = 0)) THEN
         RETURN NEW;
     END IF;
 
+    -- Shuffle every card still in the open pile together with any cards
+    -- remaining in the draw deck. Do not deal cards or create animations.
     SELECT COALESCE(
         jsonb_agg(card ORDER BY shuffle_key),
         '[]'::jsonb
@@ -61,6 +61,6 @@ DROP TRIGGER IF EXISTS trg_reshuffle_open_pile_when_draw_deck_low
 ON public.game_states;
 
 CREATE TRIGGER trg_reshuffle_open_pile_when_draw_deck_low
-BEFORE UPDATE OF draw_deck ON public.game_states
+BEFORE UPDATE OF draw_deck, open_pile ON public.game_states
 FOR EACH ROW
 EXECUTE FUNCTION public.reshuffle_open_pile_when_draw_deck_low();
