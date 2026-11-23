@@ -252,6 +252,21 @@ button:active{transform:translateY(2px);box-shadow:0 2px 0 #4a3020,0 4px 8px #00
  .hand-card{flex-basis:116px}
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* Full-scene card artwork: remove the tiny circular thumbnail treatment. */
+.hand-card{min-height:278px;padding:12px 10px 12px;background:linear-gradient(145deg,#fff9eb 0%,#f3e5c8 58%,#d7c39d 100%)}
+.hand-card:after{display:none}
+.hand-card .card-title{min-height:32px;font-size:13px;font-weight:700;letter-spacing:.25px}
+.hand-card .card-art{width:100%;height:126px;margin:5px auto 7px;display:block;overflow:hidden;border:2px solid #9b7b4b;border-radius:7px;background:#263b31;box-shadow:0 2px 7px #39271966,inset 0 0 0 2px #fff8}
+.hand-card .card-art .art-picture{display:block;width:100%;height:100%;border-radius:0;background-image:url("assets/illustration-atlas.webp");background-size:400% 500%;background-repeat:no-repeat;box-shadow:none}
+.hand-card .card-number{font-size:23px;line-height:1.05;margin-top:1px}
+.hand-card .card-meta{font-size:8px;letter-spacing:1px;line-height:1.35;min-height:20px;text-align:center;color:#654d35}
+.hand-card .card-ability{font-size:8.5px;line-height:1.25;min-height:36px;padding:6px 4px 0;margin-top:4px;border-top:1px solid #9a7b4d66;color:#4b3829;text-align:center;white-space:normal}
+@media(max-width:650px){
+ .hand-card{flex-basis:154px;min-height:278px}
+ .hand-card .card-art{height:126px}
+ .hand-card .card-ability{font-size:8.5px}
+}
 </style>
 </head>
 <body>
