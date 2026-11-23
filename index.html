@@ -267,6 +267,64 @@ button:active{transform:translateY(2px);box-shadow:0 2px 0 #4a3020,0 4px 8px #00
  .hand-card .card-art{height:126px}
  .hand-card .card-ability{font-size:8.5px}
 }
+
+/* Reference-style Japanese illustrated card face */
+.hand-card{
+  position:relative;flex:0 0 188px;min-height:340px;padding:0!important;
+  display:block!important;overflow:hidden;border:3px solid #272321!important;
+  border-radius:7px!important;background:#171514!important;color:#fff!important;
+  box-shadow:4px 6px 0 #5b4630,0 12px 22px #000b!important;
+  text-align:left!important;scroll-snap-align:start
+}
+.hand-card:before{inset:5px;border:1px solid #d0b78388;z-index:4;pointer-events:none}
+.hand-card:after{display:none!important}
+.hand-card .card-title{
+  position:absolute;z-index:5;top:9px;left:10px;right:10px;width:auto;
+  min-height:0!important;display:block!important;text-align:left!important;
+  padding:2px 4px 7px;font:bold 17px/1.12 Georgia,serif!important;
+  color:#fff!important;letter-spacing:.25px;text-shadow:0 2px 4px #000,1px 1px 2px #000;
+  background:linear-gradient(180deg,#090909b8,transparent)
+}
+.hand-card .card-art{
+  position:absolute!important;inset:0!important;width:100%!important;height:100%!important;
+  margin:0!important;padding:0!important;border:0!important;border-radius:0!important;
+  background:#1d2924!important;box-shadow:none!important;overflow:hidden!important
+}
+.hand-card .card-art .art-picture{
+  display:block;width:100%;height:100%;border-radius:0!important;
+  background-size:400% 500%!important;background-repeat:no-repeat!important;
+  box-shadow:none!important;filter:none
+}
+.hand-card .card-number{
+  position:absolute;z-index:5;left:13px;bottom:66px;font:bold 26px Georgia!important;
+  color:#fff!important;text-shadow:0 2px 5px #000,1px 1px #000
+}
+.hand-card .card-meta{
+  position:absolute;z-index:5;left:12px;right:12px;bottom:42px;
+  min-height:0!important;text-align:left!important;font:700 9px/1.2 Arial,sans-serif!important;
+  letter-spacing:1px!important;color:#fff!important;text-shadow:0 1px 4px #000
+}
+.hand-card .card-ability{
+  position:absolute;z-index:6;left:0;right:0;bottom:0;width:100%;min-height:54px!important;
+  margin:0!important;padding:9px 10px!important;display:block!important;
+  box-sizing:border-box;background:#111d;color:#fff!important;
+  border-top:2px solid #c4a36b!important;text-align:left!important;
+  font:11px/1.3 Arial,sans-serif!important;letter-spacing:0!important;
+  text-transform:none!important;white-space:normal!important
+}
+.hand-card.card-special .card-number{display:none}
+.hand-card.card-special .card-meta{bottom:66px}
+.hand-card.card-special .card-ability{min-height:68px!important;font-size:10.5px!important}
+.hand-card.selected{transform:translateY(-10px)!important;border-color:#e9cb86!important}
+@media(max-width:650px){
+ .hand-card{flex-basis:178px;min-height:330px}
+ .hand-card .card-title{font-size:16px!important}
+ .hand-card .card-ability{font-size:10.5px!important}
+}
+@media(max-width:380px){
+ .hand-card{flex-basis:164px;min-height:310px}
+}
+
 </style>
 </head>
 <body>
