@@ -601,24 +601,44 @@ function cardArtwork(card){
   const id=String(card?.id||"").toLowerCase();
   const season=String(card?.season||card?.suit||"").toLowerCase();
   const weather=String(card?.weather||card?.type||"").toLowerCase();
-  const art={
-    tengu:"天狗",sakura_leaf:"桜",kappa:"河童",moon_rabbit:"月兎",
-    sensei_man:"武",sensei_woman:"道",nure_onna:"蛇",
-    silkworm_shield:"繭",tsubaki_flower:"椿",bonsai:"盆栽",
-    rain_9:"雨",rain_10:"雨",typhoon_11:"風",typhoon_12:"嵐"
+  const S={
+    spring:["#f9d9df","#f6eee0","#c76b83",'<path d="M8 92Q48 42 110 14" stroke="#60432f" stroke-width="8" fill="none"/><path d="M36 67q-18-23-27-8 8 20 27 8m15-13q-5-26 12-25 8 18-12 25m13-9q13-24 26-12-4 20-26 12" fill="#e9a5b4"/><g fill="#fff0e6"><circle cx="32" cy="42" r="8"/><circle cx="44" cy="37" r="7"/><circle cx="39" cy="50" r="7"/><circle cx="86" cy="28" r="8"/></g><path d="M5 102l42-32 19 14 26-25 28 43" fill="#718c83"/>'],
+    summer:["#f8df9b","#a8c9a4","#477d78",'<circle cx="91" cy="23" r="13" fill="#f5a84b"/><path d="M0 92Q40 58 120 89v25H0" fill="#477c70"/><path d="M60 88q-20-38-40-10 11 22 40 10m0 0q3-42 29-28-2 28-29 28m0 0q30-25 42 1-21 18-42-1" fill="#3f806c"/><path d="M59 88q-8-31 4-40 14 19-4 40" fill="#e68a9c"/>'],
+    autumn:["#f5d5a3","#d98a55","#7e443c",'<path d="M60 112V29M60 48L25 20m35 30 35-31M60 69 19 54m41 5 43-14" stroke="#64412f" stroke-width="7" fill="none"/><g fill="#d75b3e"><path d="M25 20l-12-9 8 16-13 7 18 2 4 15 8-15 17-2-15-9 2-17z"/><path d="M94 18l-9-9 4 17-14 7 18 1 6 15 7-16 14-4-15-7 1-16z"/></g><path d="M0 105q30-20 58-4 31-21 62 1v18H0" fill="#9b5d3d"/>'],
+    winter:["#c8dce8","#eef3ed","#718b9b",'<path d="M4 92L37 36l27 43 20-31 33 44" fill="#607d8b"/><path d="M37 36l-11 19 12-5 8 13 2-13 13 7-24-21m20 29-9 14 11-3 7 12 3-12 10 3-22-14" fill="#f6f4e9"/><path d="M6 100q25-18 48 0 29-20 61 0v16H6" fill="#e9f0ed"/><g stroke="#fff" stroke-width="2"><path d="M18 23v17m-8-8h16m-14-6 12 12m0-12L12 38M92 14v15m-7-7h14"/></g>'],
+    sun:["#f7d89a","#f4ad66","#8e9e9b",'<circle cx="61" cy="46" r="22" fill="#f28b42"/><g stroke="#e9a04e" stroke-width="4"><path d="M61 8v12m0 52v12M23 46h13m51 0h13M34 19l9 9m36 36 9 9M87 19l-9 9M43 64l-9 9"/></g><path d="M0 103q28-28 58-8 29-23 62 4v17H0" fill="#697f77"/>'],
+    rain:["#b8cbd2","#dbe5df","#668494",'<path d="M0 67q17-28 36-12 16-30 39-8 26-9 39 17H0" fill="#6e8792"/><path d="M16 77l-7 18m28-18-7 18m30-18-7 18m30-18-7 18m30-18-7 18" stroke="#e9f4f2" stroke-width="4" stroke-linecap="round"/><path d="M0 104q30-16 60 0 31-16 60 0" fill="none" stroke="#5b8790" stroke-width="6"/>'],
+    typhoon:["#8e9ba6","#536b7c","#263b4c",'<path d="M59 14q42-6 44 27 1 23-31 30-25 6-27 26 25 20 49 0" stroke="#e8e6d7" stroke-width="8" fill="none" stroke-linecap="round"/><path d="M0 86q30-26 60-3 31-24 60 2v31H0" fill="#3f5d70"/>'],
+    wind:["#d8dfd2","#b2c9bd","#718c83",'<path d="M7 37h77q20 0 12-15-7-12-18-3M5 58h101q16 0 8-17-7-10-17-4M13 80h65q18 0 11 17-7 12-19 4" stroke="#f8f2dd" stroke-width="7" fill="none" stroke-linecap="round"/>'],
+    snow:["#d5e4eb","#f5f4ec","#9bb4c0",'<path d="M0 90l31-35 19 22 23-36 47 51v25H0" fill="#91aab4"/><path d="M31 55l-9 11 11-3 8 10 1-12 10 4-21-10m33-14-11 15 13-4 8 13 2-13 13 5-25-16" fill="#f8f8ee"/><g fill="#fff"><circle cx="17" cy="23" r="3"/><circle cx="88" cy="18" r="3"/><circle cx="55" cy="11" r="2"/></g>'],
+    tengu:["#e9b7a0","#b95849","#482e35",'<path d="M13 37L3 8l30 19m74 10 10-29-30 19" fill="#3c3032" stroke="#231f27" stroke-width="4"/><path d="M25 35q35-28 70 0l-8 50q-27 23-54 0z" fill="#b83f35" stroke="#512d2b" stroke-width="4"/><path d="M35 51l20 7-18 5m48-12-20 7 18 5" stroke="#f6d8bd" stroke-width="5" fill="none"/><path d="M56 58q4-11 9 0l-4 19z" fill="#e6a17e"/>'],
+    sakura_leaf:["#f7dce3","#e99eb2","#a64e6c",'<path d="M60 100Q8 62 35 22q25 4 25 29 0-25 25-29 28 40-25 78" fill="#e77f9e" stroke="#a64e6c" stroke-width="3"/><path d="M60 98Q56 59 60 28M60 56L39 39m21 33 23-23" stroke="#f9d9df" stroke-width="3" fill="none"/>'],
+    kappa:["#b9d8bd","#68a28c","#315c57",'<ellipse cx="60" cy="37" rx="30" ry="15" fill="#426b4e" stroke="#24483f" stroke-width="4"/><path d="M30 48q2-23 30-23t30 23l-5 42q-25 23-50 0z" fill="#6cae88" stroke="#315d51" stroke-width="4"/><ellipse cx="60" cy="40" rx="17" ry="8" fill="#d8d29a"/><circle cx="48" cy="61" r="5" fill="#fff"/><circle cx="72" cy="61" r="5" fill="#fff"/><path d="M48 78q12 10 24 0" stroke="#315d51" stroke-width="3" fill="none"/>'],
+    moon_rabbit:["#292e55","#555b86","#d7c6a2",'<circle cx="88" cy="29" r="20" fill="#f1dca4"/><path d="M41 53Q20 10 37 5q19 11 18 44 8-45 23-38 10 17-14 49 27 2 30 27-4 28-32 28-31-1-34-29 0-20 13-33" fill="#f4eee0" stroke="#b7a88f" stroke-width="3"/><circle cx="51" cy="78" r="3" fill="#493d42"/>'],
+    sensei_man:["#d7c6aa","#a18b76","#514b4b",'<path d="M25 109q4-37 35-42 34 4 38 42" fill="#333b42"/><path d="M34 46q0-32 27-32 29 0 28 33l-8 28-20 15-20-16z" fill="#d7a77f"/><path d="M33 46q-3-38 30-38 33 0 32 37l-12-15-18-8-22 10z" fill="#e2e0d5"/><path d="M41 69q20 27 40 0l-7 28H49z" fill="#e8e0d0"/>'],
+    sensei_woman:["#f1d1c7","#c77f78","#57425b",'<path d="M20 112q4-37 40-42 38 6 40 42" fill="#a33f45"/><path d="M27 54Q15 4 61 7q48 2 34 64l-9 28-10-43-31-17-13 54z" fill="#292631"/><ellipse cx="60" cy="49" rx="25" ry="32" fill="#e8b99c"/><path d="M42 47h13m11 0h13" stroke="#40313a" stroke-width="3"/><circle cx="83" cy="22" r="8" fill="#c54e52"/>'],
+    nure_onna:["#26394b","#526c77","#c4b3a0",'<path d="M8 109q-4-33 26-43 26-9 30-32 6-30 36-22 25 8 8 32-14 18-35 14-14-2-21 17-9 25-52 34" fill="none" stroke="#273f4a" stroke-width="17" stroke-linecap="round"/><path d="M57 42q-5-26 17-29 20 0 21 19-2 17-20 19z" fill="#e4bca5"/><path d="M61 15q14-17 31-4l9 16-17-7-16 7" fill="#1f242d"/>'],
+    silkworm_shield:["#f7e5b7","#d8b878","#8d784f",'<path d="M60 8Q17 32 25 66q5 29 35 44 30-15 35-44Q103 32 60 8" fill="#f5edcf" stroke="#b79755" stroke-width="4"/><path d="M60 18q-26 20-23 47 3 21 23 34 20-13 23-34 3-27-23-47" fill="none" stroke="#d2b66f" stroke-width="3"/><path d="M60 26v63M43 39q17 12 34 0M39 60q21 13 42 0" stroke="#e2ce9b" stroke-width="3" fill="none"/>'],
+    tsubaki_flower:["#f4d8c8","#d57d70","#5c6f54",'<g fill="#c8443d" stroke="#8f302e" stroke-width="2"><ellipse cx="60" cy="34" rx="15" ry="29"/><ellipse cx="60" cy="34" rx="15" ry="29" transform="rotate(72 60 60)"/><ellipse cx="60" cy="34" rx="15" ry="29" transform="rotate(144 60 60)"/><ellipse cx="60" cy="34" rx="15" ry="29" transform="rotate(216 60 60)"/><ellipse cx="60" cy="34" rx="15" ry="29" transform="rotate(288 60 60)"/></g><circle cx="60" cy="60" r="13" fill="#e8bb62"/><path d="M60 73q-4 25-23 36m23-30q19 2 31 18" stroke="#54704d" stroke-width="5" fill="none"/>'],
+    bonsai:["#d8e2d0","#9bad8c","#6b795e",'<path d="M60 86q-9-20 3-37-2-17 15-28" stroke="#70513a" stroke-width="9" fill="none" stroke-linecap="round"/><path d="M61 56L37 37m25 16 25-23m-24 39-29-5" stroke="#70513a" stroke-width="6" fill="none"/><g fill="#477653"><ellipse cx="36" cy="34" rx="25" ry="14"/><ellipse cx="84" cy="25" rx="25" ry="14"/><ellipse cx="54" cy="53" rx="28" ry="14"/></g><path d="M26 89h68l-8 21H34z" fill="#a74f3e" stroke="#71382f" stroke-width="3"/>']
   };
-  if(art[id])return art[id];
-  if(season.includes("spring"))return "桜";
-  if(season.includes("summer"))return "夏";
-  if(season.includes("autumn")||season.includes("fall"))return "紅葉";
-  if(season.includes("winter"))return "雪";
-  if(weather.includes("rain"))return "雨";
-  if(weather.includes("typhoon"))return "嵐";
-  if(card?.category==="season")return "四季";
-  if(card?.category==="weather")return "風";
-  return "Ō";
-}
-function cardAbility(card){
+  let key=id;
+  if(id.startsWith("rain_"))key="rain";
+  else if(id.startsWith("typhoon_"))key="typhoon";
+  else if(!S[key]){
+    if(season.includes("spring"))key="spring";
+    else if(season.includes("summer"))key="summer";
+    else if(season.includes("autumn")||season.includes("fall"))key="autumn";
+    else if(season.includes("winter"))key="winter";
+    else if(weather.includes("rain"))key="rain";
+    else if(weather.includes("typhoon")||weather.includes("storm"))key="typhoon";
+    else if(weather.includes("wind"))key="wind";
+    else if(weather.includes("snow"))key="snow";
+    else key=card?.category==="weather"?"sun":"spring";
+  }
+  const p=S[key]||S.bonsai;
+  return '<svg viewBox="0 0 120 120" role="img" aria-label="'+key+' illustration" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="bg-'+key+'" x1="0" y1="0" x2="1" y2="1"><stop stop-color="'+p[0]+'"/><stop offset="1" stop-color="'+p[1]+'"/></linearGradient><clipPath id="clip-'+key+'"><circle cx="60" cy="60" r="55"/></clipPath></defs><circle cx="60" cy="60" r="57" fill="#f4e5c5" stroke="#a98b5a" stroke-width="3"/><g clip-path="url(#clip-'+key+')"><rect width="120" height="120" fill="url(#bg-'+key+')"/>'+p[3]+'<path d="M0 111q30-8 60 0t60 0v12H0" fill="'+p[2]+'" opacity=".35"/></g><circle cx="60" cy="60" r="55" fill="none" stroke="#fff7e8" stroke-width="2"/></svg>';
+}function cardAbility(card){
   if(card?.id==="sensei_man")return "Attack the next active player clockwise with 14+ points";
   if(card?.id==="sensei_woman")return "Attack the previous active player counterclockwise with 14+ points";
   if(card?.id==="moon_rabbit")return "Collect up to 3 cards from the Play Pile";
@@ -782,7 +802,7 @@ async function showGameScreen(room,players){
     el.disabled=active?.id!==me.id;
     el.onclick=()=>selectHandCard(card.id);
     const title=document.createElement("div");title.className="card-title";title.textContent=cardLabel(card);
-    const art=document.createElement("div");art.className="card-art";art.setAttribute("aria-hidden","true");art.textContent=cardArtwork(card);
+    const art=document.createElement("div");art.className="card-art";art.setAttribute("aria-hidden","true");art.innerHTML=cardArtwork(card);
     const number=document.createElement("div");number.className="card-number";
     number.textContent=(typeof card==="object"&&card!==null&&(card.number??card.value)!==undefined)?String(card.number??card.value):"✿";
     const meta=document.createElement("div");meta.className="card-meta";meta.textContent=cardDetails(card)||(card.category==="season"?"SEASON CARD":card.category==="weather"?"WEATHER CARD":"SPECIAL CARD");
