@@ -195,6 +195,51 @@ footer{text-align:center;color:#9b8870;font:10px Arial,sans-serif;letter-spacing
 #myHand.animation-recipient{outline:2px solid #ffe08a;border-radius:12px;box-shadow:0 0 22px #e2c07188}
 :focus-visible{outline:2px solid var(--gold2);outline-offset:3px}
 @media(hover:hover){.hand-card:not(:disabled):hover{transform:translateY(-8px) rotate(-1deg);box-shadow:4px 12px 0 #76552b,0 18px 26px #000a}}
+
+/* Second art direction: illustrated Japanese card faces and a richer play surface */
+#gameScreen{border:1px solid #b08b53;box-shadow:0 28px 80px #000b,inset 0 0 0 5px #ffffff08,inset 0 0 0 6px #9e794433}
+#gameScreen>h2{font-size:clamp(23px,4vw,31px);letter-spacing:3px;text-transform:uppercase;color:#f4dfad;text-shadow:0 3px 18px #d2a75b55}
+.game-board{background:
+ radial-gradient(ellipse at 50% 50%,#42634a 0%,#294b37 42%,#183325 78%,#10241b 100%),
+ repeating-linear-gradient(0deg,#ffffff04 0 1px,transparent 1px 4px);
+ border-width:9px;border-color:#3d291d;box-shadow:0 20px 40px #000b,inset 0 0 0 2px #d2b16c,inset 0 0 0 5px #6a4b2d,inset 0 0 50px #000b}
+.game-board:after{content:"四季";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:74px;height:74px;border:1px solid #d8bd7955;border-radius:50%;display:grid;place-items:center;color:#e3c98c;font:22px Georgia;letter-spacing:2px;opacity:.2;pointer-events:none;box-shadow:0 0 0 8px #d8bd790c,0 0 0 17px #d8bd7908}
+.pile{background:linear-gradient(145deg,#10271cdd,#0c1e16ed);border-color:#c1a269;box-shadow:inset 0 0 0 3px #ffffff08,inset 0 0 30px #000b,0 9px 18px #0006}
+.pile-card.back{position:relative;isolation:isolate;background:
+ radial-gradient(circle at 50% 43%,#d8b66b 0 2px,transparent 3px),
+ radial-gradient(circle at 50% 43%,transparent 0 23px,#d8b66b 24px 25px,transparent 26px),
+ repeating-linear-gradient(45deg,#71272e 0 5px,#39191f 5px 10px);color:#f6e8c7}
+.pile-card.back:after{content:"桜";position:absolute;inset:0;display:grid;place-items:center;font:25px Georgia;color:#f2d99b;text-shadow:0 2px 9px #000}
+.hand{gap:17px;padding:22px 10px 30px;perspective:1000px}
+.hand-card{flex-basis:154px;min-height:244px;padding:14px 11px 12px;border-width:4px;border-radius:11px;
+ background:
+  radial-gradient(circle at 50% 48%,#fff9e8 0 30%,transparent 31%),
+  linear-gradient(145deg,#fff9eb 0%,#f1e4c9 52%,#cdb88e 100%);
+ box-shadow:4px 6px 0 #61472d,0 16px 26px #0009,inset 0 0 0 2px #fff9}
+.hand-card:before{inset:6px;border:1px solid #9a794b}
+.hand-card:after{width:112px;height:112px;top:51%;border:1px solid #8c70452e;box-shadow:0 0 0 8px #8c70450c,0 0 0 17px #8c704508}
+.hand-card .card-title{width:100%;min-height:31px;display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1.2;color:#3a281e;text-shadow:0 1px #fff}
+.hand-card .card-art{position:relative;z-index:1;width:88px;height:88px;display:grid;place-items:center;margin:1px auto 0;
+ border:1px solid #a78a5b;border-radius:50%;background:radial-gradient(circle,#fff9e9 0 45%,#e8d7b4 46% 68%,#cbb387 69% 100%);
+ color:#87383b;font:36px/1 Georgia,"Times New Roman",serif;text-shadow:0 2px #fff8;box-shadow:0 0 0 5px #a78a5b18,0 4px 10px #59452b33}
+.hand-card .card-art:before,.hand-card .card-art:after{content:"";position:absolute;inset:-7px;border:1px solid #a78a5b66;border-radius:50%;transform:rotate(30deg) scaleX(.78)}
+.hand-card .card-art:after{transform:rotate(-30deg) scaleX(.78)}
+.hand-card .card-number{position:relative;z-index:1;font:bold 24px Georgia;color:#713034;text-shadow:1px 1px #fff9;line-height:1}
+.hand-card .card-meta{font-size:8px;letter-spacing:1.2px;line-height:1.4}
+.hand-card .card-ability{font-size:8px;min-height:31px;padding-top:6px;margin-top:5px}
+.hand-card.card-weather .card-art{color:#315c76;background:radial-gradient(circle,#f4f8f4 0 45%,#d5e0df 46% 68%,#aebeb7 69% 100%);border-color:#6b8790}
+.hand-card.card-special .card-art{color:#8b3038;background:radial-gradient(circle,#fff6e4 0 45%,#e6cdb0 46% 68%,#c69b78 69% 100%)}
+.hand-card[data-card-id="tengu"] .card-art{color:#9a2e28}
+.hand-card[data-card-id="kappa"] .card-art{color:#326b61}
+.hand-card[data-card-id="moon_rabbit"] .card-art{color:#6b5b8c}
+.hand-card[data-card-id="sakura_leaf"] .card-art{color:#b34f64}
+.hand-card.selected{transform:translateY(-14px) rotate(-1deg);border-color:#e9c879;box-shadow:0 0 0 3px #e8c67888,5px 10px 0 #76552b,0 22px 35px #000c,inset 0 0 0 2px #fff}
+@media(hover:hover){.hand-card:not(:disabled):hover{transform:translateY(-11px) rotate(-1.5deg) scale(1.025);box-shadow:5px 12px 0 #76552b,0 23px 32px #000b}}
+.opponent{background:linear-gradient(145deg,#47312a,#211916 75%);border-color:#947047;box-shadow:inset 0 1px #fff1,0 7px 16px #0005}
+.opponent.active{background:linear-gradient(145deg,#59432b,#241a17);border-color:#f2d38d;box-shadow:0 0 0 1px #e2c07166,0 0 28px #d7b87544,inset 0 1px #fff2}
+button{border:1px solid #d2b16c;box-shadow:0 4px 0 #4a3020,0 8px 16px #0005;letter-spacing:.35px}
+button:active{transform:translateY(2px);box-shadow:0 2px 0 #4a3020,0 4px 8px #0005}
+
 @media(max-width:650px){
  main{padding:12px 10px 38px}
  header{padding:34px 8px 27px}
@@ -552,6 +597,27 @@ function cardDetails(card){
   if(["season","weather"].includes(card.category) && card.points!==undefined&&card.points!==null)bits.push(card.points+" pts");
   return bits.join(" · ");
 }
+function cardArtwork(card){
+  const id=String(card?.id||"").toLowerCase();
+  const season=String(card?.season||card?.suit||"").toLowerCase();
+  const weather=String(card?.weather||card?.type||"").toLowerCase();
+  const art={
+    tengu:"天狗",sakura_leaf:"桜",kappa:"河童",moon_rabbit:"月兎",
+    sensei_man:"武",sensei_woman:"道",nure_onna:"蛇",
+    silkworm_shield:"繭",tsubaki_flower:"椿",bonsai:"盆栽",
+    rain_9:"雨",rain_10:"雨",typhoon_11:"風",typhoon_12:"嵐"
+  };
+  if(art[id])return art[id];
+  if(season.includes("spring"))return "桜";
+  if(season.includes("summer"))return "夏";
+  if(season.includes("autumn")||season.includes("fall"))return "紅葉";
+  if(season.includes("winter"))return "雪";
+  if(weather.includes("rain"))return "雨";
+  if(weather.includes("typhoon"))return "嵐";
+  if(card?.category==="season")return "四季";
+  if(card?.category==="weather")return "風";
+  return "Ō";
+}
 function cardAbility(card){
   if(card?.id==="sensei_man")return "Attack the next active player clockwise with 14+ points";
   if(card?.id==="sensei_woman")return "Attack the previous active player counterclockwise with 14+ points";
@@ -711,14 +777,16 @@ async function showGameScreen(room,players){
   cards.forEach(card=>{
     const el=document.createElement("button");
     el.type="button";
-    el.className="hand-card"+(card.id===selectedCardId?" selected":"");
+    el.className="hand-card card-"+String(card.category||"special").toLowerCase().replace(/[^a-z0-9_-]/g,"-")+(card.id===selectedCardId?" selected":"");
+    el.dataset.cardId=String(card.id||"");
     el.disabled=active?.id!==me.id;
     el.onclick=()=>selectHandCard(card.id);
     const title=document.createElement("div");title.className="card-title";title.textContent=cardLabel(card);
+    const art=document.createElement("div");art.className="card-art";art.setAttribute("aria-hidden","true");art.textContent=cardArtwork(card);
     const number=document.createElement("div");number.className="card-number";
     number.textContent=(typeof card==="object"&&card!==null&&(card.number??card.value)!==undefined)?String(card.number??card.value):"✿";
     const meta=document.createElement("div");meta.className="card-meta";meta.textContent=cardDetails(card)||(card.category==="season"?"SEASON CARD":card.category==="weather"?"WEATHER CARD":"SPECIAL CARD");
-    el.append(title,number,meta);
+    el.append(title,art,number,meta);
     const ability=cardAbility(card);
     if(ability){const rule=document.createElement("div");rule.className="card-ability";rule.textContent=ability;el.appendChild(rule);}
     hand.appendChild(el);
